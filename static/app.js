@@ -1,250 +1,90 @@
-/* 模拟装配前端（Vue 3，buildless） */
-const { createApp } = Vue;
+/* 模拟装配前端（Vue 3，setup() 重写版） */
+const { createApp, ref, computed, watch, onMounted, reactive } = Vue;
 
-const API = {
-  search: (q, cat, limit) => `/api/search?q=${encodeURIComponent(q)}&cat=${cat}&limit=${limit || 50}`,
-  ships: '/api/ships',
-  characters: '/api/characters',
-  skills: (cid) => `/api/characters/${cid}/skills`,
-  wallet: (cid) => `/api/characters/${cid}/wallet`,
-  fittings: (cid) => `/api/characters/${cid}/fittings`,
-  sim: '/api/simulate',
-  eftSim: '/api/eft/simulate',
-  local: '/api/local/fittings',
-  saveEsi: (cid) => `/api/characters/${cid}/fittings/save`,
-  authStart: '/api/auth/start',
-};
+const API = (p, o) => fetch(p, o).then(async r => { const d = await r.json().catch(()=>({})); if(!r.ok) throw new Error(d.error||r.status); return d; });
+const icon = tid => `https://images.evetech.net/types/${tid}/icon?size=32`;
 
-function fmtNum(n) {
-  if (n === null || n === undefined || isNaN(n)) return '—';
-  if (Math.abs(n) >= 1e9) return (n / 1e9).toFixed(2) + 'B';
-  if (Math.abs(n) >= 1e6) return (n / 1e6).toFixed(1) + 'M';
-  if (Math.abs(n) >= 1e4) return (n / 1e4).toFixed(1) + '万';
-  if (Math.abs(n) >= 1000) return (n / 1000).toFixed(1) + 'k';
-  return String(Math.round(n * 10) / 10);
-}
+function n(v){ if(v==null||isNaN(v)) return '—'; if(Math.abs(v)>=1e9) return (v/1e9).toFixed(2)+'B'; if(Math.abs(v)>=1e6) return (v/1e6).toFixed(1)+'M'; if(Math.abs(v)>=1e4) return (v/1e4).toFixed(1)+'万'; return String(Math.round(v*10)/10); }
+function fmtT(s){ if(!s||s<0) return '—'; return `${String(Math.floor(s/3600)|0).padStart(2,'0')}:${String((Math.floor(s/60)%60)|0).padStart(2,'0')}:${String(Math.floor(s%60)|0).padStart(2,'0')}`; }
 
-const icon = (tid) => `https://images.evetech.net/types/${tid}/icon?size=32`;
+createApp({ setup() {
+ const lt=ref('hull'), rt=ref('res'), ehp=ref('e');
+ const shipTid=ref(null), shipName=ref(''), fitName=ref('');
+ const builds=ref([]), sim=ref(null);
+ const sq=ref(''), sq2=ref(''), iq=ref('');
+ const ships=ref([]), iResults=ref([]);
+ const chars=ref([]), charId=ref(null), sk=ref({}), isk=ref('—');
+ const fitList=ref([]), loadingFits=ref(false);
+ const eftText=ref(''), saveName=ref('');
+ const modShip=ref(false), modEft=ref(false), modSave=ref(false), fitCache=ref({});
 
-createApp({
-  data() {
-    return {
-      ltab: 'hull', rtab: 'res', ehpMode: 'ehp',
-      shipTid: null, shipName: '', fitName: '',
-      shipQ: '', shipQ2: '', ships: [], itemQ: '', buildList: [], itemResults: [],
-      characters: [], charId: null, skills: {}, isk: '—',
-      fittingList: [], fittingsLoading: false, activeFitKey: null,
-      sim: null, unknowns: [],
-      eftText: '', saveName: '',
-      openShipModal: false, openEft: false, openSaveModal: false,
-      fitCache: {},      // 角色装配原始数据缓存 {fitting_id: {ship_tid, items}}
-    };
-  },
-  computed: {
-    hasSkills() { return Object.keys(this.skills).length > 0; },
-    res() { return this.sim ? this.sim.resources : {}; },
-    resists() { return this.sim ? this.sim.resists : {shield:[],armor:[],hull:[]}; },
-    ehp() { return this.sim ? this.sim.ehp : {layers:{},total:0}; },
-    fw() { return this.sim ? this.sim.firepower : {turret:{},drone:{},total:0,weapons:[]}; },
-    tgt() { return this.sim ? this.sim.targeting : {}; },
-    nav() { return this.sim ? this.sim.nav : {}; },
-    repair() { return this.sim ? this.sim.repair : {armor:0,shield:0}; },
-    cap() { return () => this.sim ? this.sim.capacitor : {stable:true,deplete:null}; },
-    capTimeLeft() {
-      const c = this.sim && this.sim.capacitor;
-      if (!c || c.stable || !c.deplete) return '';
-      const s = Math.round(c.deplete);
-      return `${String(Math.floor(s / 3600)).padStart(2, '0')}:${String(Math.floor((s % 3600) / 60)).padStart(2, '0')}:${String(s % 60).padStart(2, '0')}`;
-    },
-    slots() { return this.sim ? this.sim.slots : {high:[],med:[],low:[],rig:[]}; },
-    other() { return this.sim ? this.sim.other : {charge:[],drone:[]}; },
-    maxRigs() { return (this.res.slots_cap && this.res.slots_cap.rig) || 0; },
-    shipGroups() {
-      const g = new Set(this.ships.map((s) => s.group));
-      return [...g].sort((a, b) => a.localeCompare(b, 'zh'));
-    },
-    shipResults2() {
-      const q = this.shipQ2.trim().toLowerCase();
-      if (!q) return this.ships.slice(0, 60);
-      return this.ships.filter((s) => s.name.toLowerCase().includes(q) || s.name_en?.toLowerCase().includes(q)).slice(0, 60);
-    },
-  },
-  methods: {
-    icon,
-    fmtNum,
-    layerName(l) { return { shield: '护盾', armor: '装甲', hull: '结构' }[l]; },
-    pct(r) { return r && r.cap ? Math.min(100, r.used / r.cap * 100) : 0; },
-    over(key) { const r = this.res[key]; return r && r.used > r.cap ? 'over' : ''; },
-    emptySlots(slot) {
-      const cap = (this.res.slots_cap && this.res.slots_cap[slot]) || 0;
-      return Math.max(0, cap - this.slots[slot].length);
-    },
-    async j(url, opt) {
-      const r = await fetch(url, opt);
-      const data = await r.json().catch(() => ({}));
-      if (!r.ok) throw new Error(data.error || r.status);
-      return data;
-    },
+ const hasSkills=computed(()=>Object.keys(sk.value).length>0);
+ const res=computed(()=>sim.value?.resources||{});
+ const slots=computed(()=>sim.value?.slots||{high:[],med:[],low:[],rig:[]});
+ const cap=s=>sim.value?.resources?.slots_cap?.[s]||0;
+ const emp=s=>Math.max(0,cap(s)-slots.value[s].length);
+ const pct=r=>r?.cap?Math.min(100,r.used/r.cap*100):0;
+ const over=k=>res.value[k]?.used>res.value[k]?.cap?'over':'';
 
-    // ---------- 角色 ----------
-    async loadCharacters() {
-      this.characters = await this.j(API.characters);
-      if (this.characters.length && this.charId === null) {
-        this.charId = this.characters[0].id;
-        await this.onCharChange();
-      }
-      if (location.search.includes('ok=1')) {
-        history.replaceState(null, '', location.pathname + location.hash);
-      }
-    },
-    async onCharChange() {
-      this.skills = {};
-      if (!this.charId) { this.isk = '—'; return; }
-      try { this.skills = await this.j(API.skills(this.charId)); } catch (e) { console.warn(e); }
-      try { this.isk = fmtNum(await this.j(API.wallet(this.charId)).then((d) => d.balance)); } catch (e) { this.isk = '—'; }
-      if (this.sim) this.simulate();
-    },
-    authStart() { location.href = API.authStart + '?target=fitting'; },
+ const shipGroups=computed(()=>[...new Set(ships.value.map(s=>s.group))].sort((a,b)=>a.localeCompare(b,'zh')));
+ const fShips=computed(()=>{ const q=sq.value.trim().toLowerCase(); return q?ships.value.filter(s=>s.name.toLowerCase().includes(q)||(s.name_en||'').toLowerCase().includes(q)):ships.value; });
+ const filterShips2=computed(()=>{ const q=sq2.value.trim().toLowerCase(); return q?ships.value.filter(s=>s.name.toLowerCase().includes(q)):ships.value; });
+ function shipsByGroup(g){ const q=sq.value.trim().toLowerCase(); return fShips.value.filter(s=>s.group===g); }
 
-    // ---------- 左栏 ----------
-    async searchShips() {
-      if (!this.ships.length) this.ships = await this.j(API.ships);
-      // 客户端过滤
-    },
-    shipsByGroup(g) {
-      const q = this.shipQ.trim().toLowerCase();
-      return this.ships.filter((s) => s.group === g && (!q || s.name.toLowerCase().includes(q)));
-    },
-    chooseShip(tid) {
-      this.shipTid = tid;
-      const s = this.ships.find((x) => x.tid === tid);
-      this.shipName = s ? s.name : '';
-      this.fitName = '';
-      this.simulate();
-    },
-    async searchItems() {
-      const q = this.itemQ.trim();
-      if (!q) return;
-      const cat = this.ltab === 'mod' ? 7 : 8;
-      this.itemResults = await this.j(API.search(q, cat));
-    },
-    addItem(r) {
-      const hit = this.buildList.find((b) => b.tid === r.tid);
-      if (hit) hit.qty += 1; else this.buildList.push({ tid: r.tid, name: r.name, qty: 1 });
-    },
-    removeItem(it) {
-      this.buildList = this.sim ? this.sim.items.filter((x) => !(x.tid === it.tid && x.qty === it.qty)) : [];
-      this.simulate();
-    },
+ async function j(p,o){ return API(p,o); }
 
-    // ---------- 装配列表 ----------
-    async loadFittings() {
-      this.fittingsLoading = true;
-      this.fittingList = [];
-      await this.searchShips();
-      try {
-        const local = await this.j(API.local);
-        local.forEach((f) => this.fittingList.push({ key: 'l' + f.id, name: f.name, ship: f.ship_name || '', kind: 'local', data: f.eft }));
-      } catch (e) { /* 忽略 */ }
-      if (this.charId) {
-        try {
-          const fits = await this.j(API.fittings(this.charId));
-          fits.forEach((f) => {
-            this.fitCache[f.fitting_id] = f;
-            this.fittingList.push({ key: 'c' + f.fitting_id, name: f.name, ship: f.ship, kind: 'char', data: f.fitting_id });
-          });
-        } catch (e) { console.warn(e); }
-      }
-      this.fittingsLoading = false;
-    },
-    async loadFit(f) {
-      this.activeFitKey = f.key;
-      if (f.kind === 'local') return this.importEftText(f.data);
-      const fit = this.fitCache[f.data];
-      if (!fit) return;
-      this.shipTid = fit.ship_tid;
-      this.shipName = fit.ship;
-      this.fitName = fit.name;
-      await this.simulateFor(fit.items.map((it) => [it.tid, it.qty]));
-    },
+ // 角色
+ async function loadChars(){ chars.value=await j('/api/characters'); if(chars.value.length&&!charId.value){ charId.value=chars.value[0].id; await onChar(); } }
+ async function onChar(){ sk.value={}; isk.value='—'; if(!charId.value)return; try{sk.value=await j(`/api/characters/${charId.value}/skills`)}catch(e){} try{isk.value=n(await j(`/api/characters/${charId.value}/wallet`).then(d=>d.balance))}catch(e){} if(sim.value)doSim(); }
+ function authStart(){ location.href='/api/auth/start?target=fitting'; }
 
-    // ---------- 模拟 ----------
-    async simulateFor(items) {
-      if (!this.shipTid) return;
-      try {
-        this.sim = await this.j(API.sim, {
-          method: 'POST', headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ ship_tid: this.shipTid, items, skills: this.skills }),
-        });
-        this.buildList = this.sim.items.map((it) => ({ tid: it.tid, name: it.name, qty: it.qty }));
-        this.unknowns = this.sim.unknowns || [];
-      } catch (e) { alert(e.message); }
-    },
-    async simulate() {
-      await this.simulateFor(this.buildList.map((b) => [b.tid, b.qty]));
-    },
+ // 舰船
+ onMounted(async()=>{ ships.value=await j('/api/ships'); loadChars(); });
+ function pickShip(tid){ shipTid.value=tid; const s=ships.value.find(x=>x.tid===tid); shipName.value=s?s.name:''; fitName.value=''; doSim(); }
 
-    // ---------- EFT ----------
-    async importEft() {
-      this.openEft = false;
-      await this.importEftText(this.eftText);
-      this.eftText = '';
-    },
-    async importEftText(eft) {
-      try {
-        const r = await this.j(API.eftSim, {
-          method: 'POST', headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ eft, skills: this.skills }),
-        });
-        this.shipTid = r.ship.tid;
-        const s = this.ships.find((x) => x.tid === r.ship.tid);
-        this.shipName = s ? s.name : r.ship.name;
-        this.fitName = r.fit_name || '';
-        this.sim = r;
-        this.buildList = r.items.map((it) => ({ tid: it.tid, name: it.name, qty: it.qty }));
-        this.unknowns = r.unknowns || [];
-      } catch (e) { alert(e.message); }
-    },
+ // 搜索
+ async function searchItems(){ const q=iq.value.trim(); if(!q)return; const cat=lt.value==='mod'?7:8; iResults.value=await j(`/api/search?q=${encodeURIComponent(q)}&cat=${cat}`); }
+ function addItem(r){ const hit=builds.value.find(b=>b.tid===r.tid); if(hit)hit.qty++; else builds.value.push({tid:r.tid,name:r.name,qty:1}); doSim(); }
+ function rmItem(it){ builds.value=builds.value.filter(b=>!(b.tid===it.tid&&b.qty===it.qty)); doSim(); }
 
-    // ---------- 保存 / 历史 ----------
-    buildEft() {
-      if (!this.sim) return '';
-      const ship = this.sim.ship.name;
-      const lines = this.sim.items.map((it) => (it.qty > 1 ? `${it.name} x${it.qty}` : it.name));
-      return `[${ship}, ${this.fitName || '未命名'}]\n${lines.join('\n')}`;
-    },
-    async saveLocal() {
-      const name = this.saveName.trim() || (this.fitName || '未命名');
-      const eft = this.buildEft();
-      if (!eft) return;
-      await this.j(API.local, {
-        method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name, eft, ship_name: this.sim.ship.name }),
-      });
-      this.openSaveModal = false;
-      this.loadFittings();
-    },
-    async saveEsi() {
-      if (!this.charId || !this.sim) return;
-      const flagOrder = ['hiSlot', 'medSlot', 'loSlot', 'rigSlot'];
-      const items = [];
-      for (const it of this.sim.items) {
-        const slots = it.slot ? this.sim.slots[it.slot] : [];
-        const idx = slots.findIndex((x) => x.tid === it.tid && x.qty === it.qty);
-        const flag = it.slot && idx >= 0 ? `${flagOrder[['high','med','low','rig'].indexOf(it.slot)]}${idx}` : 'cargo';
-        items.push({ type_id: it.tid, quantity: it.qty, flag });
-      }
-      try {
-        await this.j(API.saveEsi(this.charId), {
-          method: 'POST', headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ name: this.saveName.trim() || '模拟装配', items, ship_tid: this.sim.ship.tid }),
-        });
-        this.openSaveModal = false;
-        alert('已保存到 EVE');
-      } catch (e) { alert('保存失败：' + e.message); }
-    },
-  mounted() {
-    this.searchShips();
-    this.loadCharacters();
-  },
-}).mount('#app');
+ // 模拟
+ async function doSim(){ if(!shipTid.value)return; try{
+  sim.value=await j('/api/simulate',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({ship_tid:shipTid.value,items:builds.value.map(b=>[b.tid,b.qty]),skills:sk.value})});
+  builds.value=sim.value.items.map(it=>({tid:it.tid,name:it.name,qty:it.qty}));
+ }catch(e){alert(e.message)}}
+ async function doEft(){ modEft.value=false; try{
+  const r=await j('/api/eft/simulate',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({eft:eftText.value,skills:sk.value})});
+  shipTid.value=r.ship.tid; shipName.value=ships.value.find(s=>s.tid===r.ship.tid)?.name||r.ship.name; fitName.value=r.fit_name||''; sim.value=r;
+  builds.value=r.items.map(it=>({tid:it.tid,name:it.name,qty:it.qty}));
+ }catch(e){alert(e.message)} eftText.value=''; }
+
+ // 装配列表
+ async function loadFits(){ loadingFits.value=true; fitList.value=[];
+  try{const l=await j('/api/local/fittings'); l.forEach(f=>fitList.value.push({k:'l'+f.id,name:f.name,ship:f.ship_name,kind:'local',data:f.eft}));}catch(e){}
+  if(charId.value){try{const f=await j(`/api/characters/${charId.value}/fittings`); f.forEach(x=>{fitCache.value[x.fitting_id]=x;fitList.value.push({k:'c'+x.fitting_id,name:x.name,ship:x.ship,kind:'char',data:x.fitting_id});})}catch(e){}}
+  loadingFits.value=false; }
+ async function loadFit(f){
+  if(f.kind==='local'){eftText.value=f.data; await doEft(); return;}
+  const x=fitCache.value[f.data]; if(!x)return;
+  shipTid.value=x.ship_tid; shipName.value=x.ship; fitName.value=x.name;
+  await doSimFor(x.items.map(it=>[it.tid,it.qty])); }
+ async function doSimFor(items){ try{
+  sim.value=await j('/api/simulate',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({ship_tid:shipTid.value,items,skills:sk.value})});
+  builds.value=sim.value.items.map(it=>({tid:it.tid,name:it.name,qty:it.qty}));
+ }catch(e){alert(e.message)}}
+
+ // 保存
+ function eftOut(){ if(!sim.value)return''; const lines=sim.value.items.map(it=>it.qty>1?`${it.name} x${it.qty}`:it.name); return `[${sim.value.ship.name}, ${fitName.value||'未命名'}]\n${lines.join('\n')}`; }
+ async function saveLocal(){ const nm=saveName.value.trim()||fitName.value||'未命名'; const e=eftOut(); if(!e)return; await j('/api/local/fittings',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({name:nm,eft:e,ship_name:sim.value.ship.name})}); modSave.value=false; }
+ async function saveEsi(){ if(!charId.value||!sim.value)return;
+  const flagOrder=['hiSlot','medSlot','loSlot','rigSlot']; const items=[];
+  for(const it of sim.value.items){ const sidx=it.slot?slots.value[it.slot]?.findIndex(x=>x.tid===it.tid&&x.qty===it.qty):-1;
+   const flag=it.slot&&sidx>=0?`${flagOrder[['high','med','low','rig'].indexOf(it.slot)]}${sidx}`:'cargo';
+   items.push({type_id:it.tid,quantity:it.qty,flag}); }
+  try{await j(`/api/characters/${charId.value}/fittings/save`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({name:saveName.value.trim()||'模拟装配',items,ship_tid:sim.value.ship.tid})}); modSave.value=false; alert('已保存');}
+  catch(e){alert('保存失败: '+e.message)}}
+
+ return {lt,rt,ehp,shipTid,shipName,fitName,builds:builds,sim,sq,sq2,iq,ships,iResults,chars,charId,sk,isk,fitList,loadingFits,eftText,saveName,modShip,modEft,modSave,fitCache,
+  hasSkills,res,slots,cap,emp,pct,over,shipGroups,fShips,filterShips2,shipsByGroup,
+  onChar,authStart,pickShip,searchItems,addItem,rmItem,doSim,doEft,loadFits,loadFit,saveLocal,saveEsi,icon,n,fmtT};
+}}).mount('#app');
