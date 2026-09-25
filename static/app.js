@@ -16,7 +16,7 @@ createApp({ setup() {
  const builds=ref([]), sim=ref(null);
  const sq=ref(''), sq2=ref(''), iq=ref('');
  const ships=ref([]), iResults=ref([]);
- const chars=ref([]), charId=ref(null), sk=ref({}), isk=ref('—');
+ const chars=ref([]), charId=ref(null), charName=ref(''), sk=ref({}), isk=ref('—');
  const fitList=ref([]), esiFits=ref({});
  const eftText=ref(''), saveName=ref('');
  const modShip=ref(false), modEft=ref(false), modSave=ref(false);
@@ -40,8 +40,9 @@ createApp({ setup() {
  async function j(p,o){ return API(p,o); }
 
  // 角色
- async function loadChars(){ chars.value=cacheGet('chars',6e5)||[]; try{chars.value=await j('/api/characters'); cacheSet('chars',chars.value)}catch(e){} if(!charId.value){ const saved=cacheGet('cid',864e5); charId.value=saved||(chars.value[0]?.id||null); } if(charId.value) await onChar(); }
+ async function loadChars(){ chars.value=cacheGet('chars',6e5)||[]; try{chars.value=await j('/api/characters'); cacheSet('chars',chars.value)}catch(e){} if(!charId.value){ const saved=cacheGet('cid',864e5); charId.value=saved||(chars.value[0]?.id||null); } charName.value=cacheGet('cname',864e5)||''; const c=chars.value.find(x=>x.id===charId.value); if(c)charName.value=c.name; if(charId.value) await onChar(); }
  async function onChar(){ sk.value={}; isk.value='—'; esiFits.value={}; if(!charId.value)return; cacheSet('cid',charId.value);
+  const c=chars.value.find(x=>x.id===charId.value); if(c){ charName.value=c.name; cacheSet('cname',c.name); }
   const cid=String(charId.value);
   const cached_sk=cacheGet('sk_'+cid,3e5); const cached_fits=cacheGet('fits_'+cid,3e5); const cached_isk=cacheGet('isk_'+cid,6e4);
   if(cached_sk){ sk.value=cached_sk; }else{ try{sk.value=await j(`/api/characters/${charId.value}/skills`); cacheSet('sk_'+cid,sk.value)}catch(e){} }
@@ -91,7 +92,7 @@ createApp({ setup() {
   try{await j(`/api/characters/${charId.value}/fittings/save`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({name:saveName.value.trim()||'模拟装配',items,ship_tid:sim.value.ship.tid})}); modSave.value=false; alert('已保存');}
   catch(e){alert('保存失败: '+e.message)}}
 
- return {lt,rt,ehp,shipTid,shipName,fitName,buildList:builds,sim,sq,sq2,iq,ships,iResults,chars,charId,sk,isk,fitList,esiFits,eftText,saveName,modShip,modEft,modSave,expanded,
+ return {lt,rt,ehp,shipTid,shipName,fitName,buildList:builds,sim,sq,sq2,iq,ships,iResults,chars,charId,charName,sk,isk,fitList,esiFits,eftText,saveName,modShip,modEft,modSave,expanded,
   hasSkills,res,slots,cap,emp,pct,over,shipGroups,fittingsByShip,fShips,filterShips2,shipsByGroup,
   onChar,authStart,pickShip,searchItems,addItem,rmItem,doSim,doEft,loadFit,saveLocal,saveEsi,icon,n,fmtT};
 }}).mount('#app');

@@ -57,8 +57,8 @@ th{color:var(--m);font-weight:400;background:var(--p2)} td:first-child,th:first-
 <div id="app">
 <header>
  <b>⛵ 模拟装配</b>
- <select v-model="charId" @change="onChar"><option :value="null">无角色</option><option v-for="c in chars" :key="c.id" :value="c.id">{{c.name}}</option></select>
- <button class="sm" @click="authStart">授权</button>
+ <span v-if="charName" class="chip">{{charName}}</span>
+ <button class="sm" @click="authStart" v-if="!charId">登录</button>
  <span class="chip" v-if="charId">ISK {{isk}}</span>
  <span class="chip m" v-if="charId&&!hasSkills">无技能scope</span>
 </header>
@@ -237,5 +237,5 @@ th{color:var(--m);font-weight:400;background:var(--p2)} td:first-child,th:first-
 </div>
 </div>
 <script src="/static/vendor/vue.global.prod.js"></script>
-<script src="/static/app.js?v=20"></script>
+<script src="/static/app.js?v=21"></script>
 </body></html>
