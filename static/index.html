@@ -140,10 +140,10 @@ th{color:var(--m);font-weight:400;background:var(--p2)} td:first-child,th:first-
    <span class="chip" v-for="c in sim.other.drone" :key="'dr'+c.tid">{{c.name}} ×{{c.qty}}</span>
    <span class="chip m" v-if="sim.unknowns?.length">未识别：{{sim.unknowns.join('、')}}</span>
   </div>
-  <div style="display:flex;gap:14px;margin-top:8px;flex-wrap:wrap">
-   <div class="kv"><span>CPU</span><b :class="over('cpu')">{{n(res.cpu.used)}}/{{n(res.cpu.cap)}}</b></div>
-   <div class="kv"><span>能量栅格</span><b :class="over('pg')">{{n(res.pg.used)}}/{{n(res.pg.cap)}}</b></div>
-   <div class="kv"><span>炮台</span><b>{{res.turret.used}}/{{res.turret.cap}}</b></div>
+  <div style="display:flex;gap:16px;margin-top:8px;flex-wrap:wrap;font-size:13px">
+   <span>CPU <b :class="over('cpu')">{{n(res.cpu.used)}}/{{n(res.cpu.cap)}}</b></span>
+   <span>能量栅格 <b :class="over('pg')">{{n(res.pg.used)}}/{{n(res.pg.cap)}}</b></span>
+   <span>炮台 <b>{{res.turret.used}}/{{res.turret.cap}}</b></span>
   </div>
  </template>
 </section>
@@ -232,5 +232,5 @@ th{color:var(--m);font-weight:400;background:var(--p2)} td:first-child,th:first-
 </div>
 </div>
 <script src="/static/vendor/vue.global.prod.js"></script>
-<script src="/static/app.js?v=14"></script>
+<script src="/static/app.js?v=15"></script>
 </body></html>
