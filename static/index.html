@@ -240,7 +240,6 @@ th{color:var(--m);font-weight:400;background:var(--p2)} td:first-child,th:first-
   <div class="act"><button @click="modSave=false">取消</button><button @click="saveLocal">本地</button><button class="prim" :disabled="!charId" @click="saveEsi">EVE</button></div>
   <div class="m" style="margin-top:6px" v-if="!charId">保存到 EVE 需选择角色并授权 write scope</div></div>
 </div>
-</div>
 <!-- 右键弹药菜单 -->
 <div class="ctxmenu" v-if="chargeMenu.show" :style="{left:chargeMenu.x+'px',top:chargeMenu.y+'px'}" @mouseleave="chargeMenu.show=false">
  <div class="m" style="padding:2px 6px" v-if="chargeMenu.current">已装填: {{chargeMenu.current}}</div>
@@ -251,5 +250,5 @@ th{color:var(--m);font-weight:400;background:var(--p2)} td:first-child,th:first-
 </div>
 </div>
 <script src="/static/vendor/vue.global.prod.js"></script>
-<script src="/static/app.js?v=29"></script>
+<script src="/static/app.js?v=30"></script>
 </body></html>
