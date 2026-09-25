@@ -104,7 +104,9 @@ def create_schema(conn):
         name_en TEXT NOT NULL DEFAULT '', published INTEGER NOT NULL DEFAULT 0,
         volume REAL NOT NULL DEFAULT 0, capacity REAL NOT NULL DEFAULT 0,
         mass REAL NOT NULL DEFAULT 0, meta_group_id INTEGER,
-        market_group_id INTEGER);
+        market_group_id INTEGER, race_id INTEGER);
+    CREATE TABLE IF NOT EXISTS races(
+        race_id INTEGER PRIMARY KEY, name TEXT NOT NULL DEFAULT '');
     CREATE TABLE IF NOT EXISTS attrs(
         attribute_id INTEGER PRIMARY KEY, name TEXT NOT NULL DEFAULT '',
         display_name TEXT NOT NULL DEFAULT '', unit_id INTEGER,
@@ -131,6 +133,16 @@ def create_schema(conn):
     CREATE INDEX IF NOT EXISTS idx_types_cat ON types(category_id);
     CREATE INDEX IF NOT EXISTS idx_groups_cat ON groups(category_id);
     """)
+    # 旧库（早于 races/race_id 的版本）补列，保证脚本可重复运行
+    ensure_columns(conn, "types", {"race_id": "INTEGER"})
+
+
+def ensure_columns(conn, table, cols):
+    """为已存在的旧库补列（本脚本需可重复运行）。cols: {列名: 声明}。"""
+    have = {r[1] for r in conn.execute(f"PRAGMA table_info({table})")}
+    for col, decl in cols.items():
+        if col not in have:
+            conn.execute(f"ALTER TABLE {table} ADD COLUMN {col} {decl}")
 
 
 def rows_to_table(conn, table, cols, rows_iter, ncols):
@@ -172,18 +184,25 @@ def build(conn, zip_path):
             4)
         print(f"  groups {counts['groups']}")
 
+        counts["races"] = rows_to_table(
+            conn, "races", ["race_id", "name"],
+            ((int(r["_key"]), zh_of(r.get("name")))
+             for r in iter_jsonl(zf, "races.jsonl")),
+            2)
+        print(f"  races {counts['races']}")
+
         counts["types"] = rows_to_table(
             conn, "types",
             ["type_id", "group_id", "category_id", "name", "name_en",
              "published", "volume", "capacity", "mass", "meta_group_id",
-             "market_group_id"],
+             "market_group_id", "race_id"],
             ((int(t["_key"]), int(t.get("groupID") or 0), 0,
               zh_of(t.get("name")), str((t.get("name") or {}).get("en") or ""),
               int(bool(t.get("published"))), float(t.get("volume") or 0),
               float(t.get("capacity") or 0), float(t.get("mass") or 0),
-              t.get("metaGroupID"), t.get("marketGroupID"))
+              t.get("metaGroupID"), t.get("marketGroupID"), t.get("raceID"))
              for t in iter_jsonl(zf, "types.jsonl")),
-            11)
+            12)
         print(f"  types {counts['types']}")
 
         counts["attrs"] = rows_to_table(
@@ -261,9 +280,11 @@ def stats(conn):
     n_skill = conn.execute("SELECT COUNT(*) FROM types WHERE published=1 AND category_id=16").fetchone()[0]
     n_pub = conn.execute("SELECT COUNT(*) FROM types WHERE published=1").fetchone()[0]
     n_attrs = conn.execute("SELECT COUNT(*) FROM type_attrs").fetchone()[0]
+    n_race = conn.execute("SELECT COUNT(*) FROM types WHERE published=1 "
+                          "AND category_id=6 AND race_id IS NOT NULL").fetchone()[0]
     print(f"已发布类型 {n_pub}：舰船 {n_ships} / 模块 {n_mods} / 弹药 {n_charge} /"
           f" 无人机 {n_drone} / 技能 {n_skill}")
-    print(f"类型属性行 {n_attrs}")
+    print(f"类型属性行 {n_attrs}；舰船种族标注 {n_race}/{n_ships}")
 
 
 def main():

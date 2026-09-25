@@ -50,7 +50,15 @@ def static_files(name):
 
 
 # ---------------------------------------------------------------- 搜索
-def _search_types(q, cats=None, limit=50):
+def _ammo_family(gn):
+    """从弹药组名提取家族名：去掉 高级/自动锁定/超大型/势力/建筑 等前缀。"""
+    for pfx in ("高级超大型", "高级", "自动锁定", "势力", "建筑", "超大型"):
+        if gn.startswith(pfx):
+            return gn[len(pfx):]
+    return gn
+
+
+def _search_types(q, cats=None, slot=None, limit=50):
     q = q.strip().lower()
     out = []
     for tid, t in sde.types.items():
@@ -60,28 +68,33 @@ def _search_types(q, cats=None, limit=50):
             continue
         name = t["name"].lower()
         en = t["name_en"].lower()
-        if q in name or (q in en and (q.isascii() or len(q) >= 3)):
-            attrs = sde.type_attrs.get(tid, {})
-            out.append({"tid": tid, "name": t["name"], "name_en": t["name_en"],
-                        "group_id": t["group_id"], "category_id": t["category_id"],
-                        "group": sde.group_name(t["group_id"]),
-                        "pg": attrs.get(30), "cpu": attrs.get(50)})
-            if len(out) >= limit:
-                break
+        if q and q not in name and not (q in en and (q.isascii() or len(q) >= 3)):
+            continue
+        s = sde.slot_of(tid)
+        if slot and s != slot:
+            continue
+        attrs = sde.type_attrs.get(tid, {})
+        out.append({"tid": tid, "name": t["name"], "name_en": t["name_en"],
+                    "group_id": t["group_id"], "category_id": t["category_id"],
+                    "group": sde.group_name(t["group_id"]),
+                    "slot": s, "meta": t.get("meta_group_id"),
+                    "family": _ammo_family(sde.group_name(t["group_id"])),
+                    "pg": attrs.get(30), "cpu": attrs.get(50)})
+        if len(out) >= limit:
+            break
     return out
 
 
 @app.route("/api/search")
 def api_search():
     q = request.args.get("q", "")
-    if not q:
-        return jsonify([])
     cats = request.args.get("cat")
     cat_ids = None
     if cats:
         cat_ids = set(int(x) for x in cats.split(",") if x.isdigit())
-    limit = min(int(request.args.get("limit", 50)), 100)
-    return jsonify(_search_types(q, cat_ids, limit))
+    slot = request.args.get("slot") or None
+    limit = min(int(request.args.get("limit", 50)), 1000)
+    return jsonify(_search_types(q, cat_ids, slot, limit))
 
 
 @app.route("/api/ships")
@@ -93,8 +106,10 @@ def api_ships():
             continue
         if group_id and t["group_id"] != int(group_id):
             continue
-        rows.append({"tid": tid, "name": t["name"], "group_id": t["group_id"],
-                     "group": sde.group_name(t["group_id"])})
+        rows.append({"tid": tid, "name": t["name"], "name_en": t["name_en"],
+                     "group_id": t["group_id"],
+                     "group": sde.group_name(t["group_id"]),
+                     "race_id": t.get("race_id"), "race": sde.race_name(tid)})
     rows.sort(key=lambda x: (x["group_id"], x["name"]))
     return jsonify(rows)
 
@@ -352,7 +367,7 @@ def api_callback():
     with open(os.path.join(config.TOKEN_DIR, f"{char['id']}.json"), "w") as f:
         json.dump(token, f)
     log.info("已授权角色：%s (ID:%d)，scopes=%s", char["name"], char["id"], char["scopes"])
-    return redirect(f"http://8.138.203.48:{config.PORT}/#/fitting?ok=1")
+    return redirect(f"{config.PUBLIC_BASE}/#/fitting?ok=1")
 
 
 def main():

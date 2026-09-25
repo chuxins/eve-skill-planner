@@ -23,9 +23,11 @@ def _basic_auth(client_id, client_secret):
 
 
 def authorize_url(state, verifier=None):
-    """构造 EVE SSO 授权 URL（回调地址用已注册的 qq_auth_bot 8000 入口）。
+    """构造 EVE SSO 授权 URL（redirect_uri 取 config.json 的 callback_url）。
 
-    verifier 由调用方生成并随 state 存库；校验回调时用同一 verifier。
+    callback_url 需与 EVE 应用登记的回调一致，并由 nginx 反代到本应用
+    （见 README「OAuth 接线」）。verifier 由调用方生成并随 state 存库，
+    校验回调时复用同一 verifier。
     """
     client_id, _, callback = config.eve_credentials()
     if verifier is None:

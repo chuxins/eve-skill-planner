@@ -37,14 +37,19 @@ class StaticData:
         self.types = {}
         for row in conn.execute("SELECT type_id,group_id,category_id,name,name_en,"
                                 "published,volume,capacity,mass,meta_group_id,"
-                                "market_group_id FROM types"):
-            tid, gid, cat, name, en, pub, vol, cap, mass, meta, market = row
+                                "market_group_id,race_id FROM types"):
+            tid, gid, cat, name, en, pub, vol, cap, mass, meta, market, race = row
             self.types[tid] = {
                 "id": tid, "group_id": gid, "category_id": cat,
                 "name": name, "name_en": en, "published": bool(pub),
                 "volume": vol, "capacity": cap, "mass": mass,
                 "meta_group_id": meta, "market_group_id": market,
+                "race_id": race,
             }
+
+        self.races = {}
+        for rid, name in conn.execute("SELECT race_id,name FROM races"):
+            self.races[rid] = name
 
         self.groups = {}
         for gid, cat, name in conn.execute("SELECT group_id,category_id,name FROM groups"):
@@ -97,6 +102,12 @@ class StaticData:
     def group_name(self, gid):
         g = self.groups.get(gid)
         return g["name"] if g else str(gid)
+
+    def race_name(self, tid):
+        """舰船种族中文名（SDE 未标注 raceID 的类型归入「其他」）。"""
+        t = self.types.get(tid)
+        rid = t.get("race_id") if t else None
+        return self.races.get(rid) or "其他"
 
     def slot_of(self, tid):
         """由物品的效果判定槽位：high/med/low/rig/sub/None。"""
