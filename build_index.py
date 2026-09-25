@@ -38,17 +38,41 @@ def clean_zh_name(name):
     return _CJK_SPACE_RE.sub("", str(name or "").replace("\u3000", " ")).strip()
 
 
-def download_sde(path):
-    print(f"下载 SDE（约 95MB）：{SDE_URL}")
-    tmp = path + ".part"
-    with requests.get(SDE_URL, headers={"User-Agent": "eve-skill-planner/1.0"},
-                      stream=True, timeout=300) as resp:
-        resp.raise_for_status()
-        with open(tmp, "wb") as f:
-            for chunk in resp.iter_content(chunk_size=1 << 20):
-                f.write(chunk)
-    os.replace(tmp, path)
-    print(f"已保存 {path}（{os.path.getsize(path) / 1048576:.1f} MB）")
+def download_sde(path, attempts=3):
+    """下载官方 SDE zip（连接被重置/下载不完整时自动重试并校验）。"""
+    url = SDE_URL
+    last = None
+    for i in range(1, attempts + 1):
+        try:
+            print(f"下载 SDE（第 {i}/{attempts} 次，约 95MB）：{url}")
+            tmp = path + ".part"
+            with requests.get(url, headers={"User-Agent": "eve-skill-planner/1.0"},
+                              stream=True, timeout=(30, 300), allow_redirects=True) as resp:
+                resp.raise_for_status()
+                with open(tmp, "wb") as f:
+                    for chunk in resp.iter_content(chunk_size=1 << 20):
+                        f.write(chunk)
+            # 校验完整性与关键文件（连接重置可能产生截断 zip）
+            with zipfile.ZipFile(tmp) as zf:
+                zf.getinfo("types.jsonl")
+                zf.getinfo("dogmaEffects.jsonl")
+            os.replace(tmp, path)
+            print(f"已保存 {path}（{os.path.getsize(path) / 1048576:.1f} MB）")
+            return
+        except (requests.ConnectionError, requests.Timeout, OSError,
+                zipfile.BadZipFile) as exc:
+            last = exc
+            wait = min(2 ** (i - 1), 8)
+            print(f"  ⚠️ 第 {i} 次失败（{exc}），{wait}s 后重试…")
+            import time
+            time.sleep(wait)
+    raise RuntimeError(
+        f"官方 SDE 下载失败（重试 {attempts} 次仍失败）：{last}\n"
+        "网络被重置时可：\n"
+        "  1. 稍后重试本命令（带 --force-download）；\n"
+        "  2. 手动下载 https://developers.eveonline.com/static-data/"
+        "eve-online-static-data-latest-jsonl.zip 放到任意路径，再加 --zip 指定；\n"
+        "  3. 若本机另有 sde.zip（如 /root/eve_esi/sde.zip），用 --zip 指它即可，无需联网。")
 
 
 def iter_jsonl(zf, name):
@@ -256,9 +280,14 @@ def main():
         stats(conn)
         return
 
-    zip_path = args.zip or (DEFAULT_SDE_ZIP if os.path.exists(DEFAULT_SDE_ZIP) else None)
-    if args.force_download or not zip_path or not os.path.exists(zip_path):
-        zip_path = download_sde(SDE_URL.split("/")[-1])
+    zip_path = None
+    for cand in (args.zip, DEFAULT_SDE_ZIP, os.path.join(BASE_DIR, "sde.zip")):
+        if cand and os.path.exists(cand):
+            zip_path = cand
+            break
+    if args.force_download or not zip_path:
+        zip_path = DEFAULT_SDE_ZIP
+        download_sde(zip_path)
     else:
         print(f"复用本地 SDE：{zip_path}")
 
