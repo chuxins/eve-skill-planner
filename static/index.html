@@ -123,19 +123,19 @@ th{color:var(--m);font-weight:400;background:var(--p2)} td:first-child,th:first-
  <div class="m" style="text-align:center;padding:40px" v-else>← 左侧选舰船或粘贴EFT</div>
  <template v-if="sim">
   <div class="slot high" v-if="slots.high.length||cap('high')"><h4>高槽 {{slots.high.length}}/{{cap('high')}}</h4>
-   <div v-for="(it,i) in slots.high" :key="i" class="sitem" @click="rmItem(it)"><img :src="icon(it.tid)"><span style="flex:1">{{it.name}}</span><span class="chip" v-if="it.qty>1">×{{it.qty}}</span></div>
+   <div v-for="(it,i) in slots.high" :key="i" class="sitem" @click="rmItem(it)"><img :src="icon(it.tid)"><span style="flex:1">{{it.name}}</span><span style="font-size:11px;color:var(--m)" v-if="it.attrs[30]||it.attrs[50]">PG {{it.attrs[30]}} CPU {{it.attrs[50]}}</span><span class="chip" v-if="it.qty>1">×{{it.qty}}</span></div>
    <div v-for="i in emp('high')" :key="'he'+i" class="sitem" style="opacity:.3"><span class="m">(空)</span></div>
   </div>
   <div class="slot med" v-if="slots.med.length||cap('med')"><h4>中槽 {{slots.med.length}}/{{cap('med')}}</h4>
-   <div v-for="(it,i) in slots.med" :key="i" class="sitem" @click="rmItem(it)"><img :src="icon(it.tid)"><span style="flex:1">{{it.name}}</span></div>
+   <div v-for="(it,i) in slots.med" :key="i" class="sitem" @click="rmItem(it)"><img :src="icon(it.tid)"><span style="flex:1">{{it.name}}</span><span style="font-size:11px;color:var(--m)" v-if="it.attrs[30]||it.attrs[50]">PG {{it.attrs[30]}} CPU {{it.attrs[50]}}</span></div>
    <div v-for="i in emp('med')" :key="'me'+i" class="sitem" style="opacity:.3"><span class="m">(空)</span></div>
   </div>
   <div class="slot low" v-if="slots.low.length||cap('low')"><h4>低槽 {{slots.low.length}}/{{cap('low')}}</h4>
-   <div v-for="(it,i) in slots.low" :key="i" class="sitem" @click="rmItem(it)"><img :src="icon(it.tid)"><span style="flex:1">{{it.name}}</span></div>
+   <div v-for="(it,i) in slots.low" :key="i" class="sitem" @click="rmItem(it)"><img :src="icon(it.tid)"><span style="flex:1">{{it.name}}</span><span style="font-size:11px;color:var(--m)" v-if="it.attrs[30]||it.attrs[50]">PG {{it.attrs[30]}} CPU {{it.attrs[50]}}</span></div>
    <div v-for="i in emp('low')" :key="'le'+i" class="sitem" style="opacity:.3"><span class="m">(空)</span></div>
   </div>
   <div class="slot rig" v-if="slots.rig.length||cap('rig')"><h4>改装件 {{slots.rig.length}}/{{cap('rig')}}</h4>
-   <div v-for="(it,i) in slots.rig" :key="i" class="sitem" @click="rmItem(it)"><img :src="icon(it.tid)"><span style="flex:1">{{it.name}}</span></div>
+   <div v-for="(it,i) in slots.rig" :key="i" class="sitem" @click="rmItem(it)"><img :src="icon(it.tid)"><span style="flex:1">{{it.name}}</span><span style="font-size:11px;color:var(--m)" v-if="it.attrs[30]||it.attrs[50]">PG {{it.attrs[30]}} CPU {{it.attrs[50]}}</span></div>
    <div v-for="i in emp('rig')" :key="'re'+i" class="sitem" style="opacity:.3"><span class="m">(空)</span></div>
   </div>
   <div style="display:flex;gap:8px;margin-top:6px;flex-wrap:wrap">
@@ -237,5 +237,5 @@ th{color:var(--m);font-weight:400;background:var(--p2)} td:first-child,th:first-
 </div>
 </div>
 <script src="/static/vendor/vue.global.prod.js"></script>
-<script src="/static/app.js?v=17"></script>
+<script src="/static/app.js?v=18"></script>
 </body></html>
