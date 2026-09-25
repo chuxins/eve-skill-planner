@@ -1,4 +1,4 @@
-"""应用配置：EVE 应用凭据（复用 eve_esi 的 EVE developer 应用）+ 路径。"""
+"""应用配置：EVE 应用凭据 + 路径。"""
 
 import json
 import os
@@ -10,25 +10,28 @@ STATIC_DIR = os.path.join(BASE_DIR, "static")
 LEGACY_DATA = os.path.expanduser("~/.eve-skill-planner")
 TOKEN_DIR = os.path.join(LEGACY_DATA, "tokens")
 
-# EVE 应用凭据来源：eve_esi/config.json（可用环境变量覆盖）
-_EVE_ESI_CONFIG = "/root/eve_esi/config.json"
+# 本地凭据文件（gitignore）
+_CONFIG_PATH = os.path.join(BASE_DIR, "config.json")
 
 
 def eve_credentials():
-    """返回 (client_id, client_secret, callback_url)。"""
+    """返回 (client_id, client_secret, callback_url)。
+
+    优先级：环境变量 → config.json（项目根目录）。
+    """
     client_id = os.environ.get("EVE_CLIENT_ID")
     client_secret = os.environ.get("EVE_CLIENT_SECRET")
     callback_url = os.environ.get("EVE_CALLBACK_URL")
-    if not client_id and os.path.exists(_EVE_ESI_CONFIG):
+    if not client_id and os.path.exists(_CONFIG_PATH):
         try:
-            cfg = json.load(open(_EVE_ESI_CONFIG))
+            cfg = json.load(open(_CONFIG_PATH))
         except (OSError, ValueError):
             cfg = {}
         client_id = client_id or cfg.get("client_id")
         client_secret = client_secret or cfg.get("client_secret")
         callback_url = callback_url or cfg.get("callback_url")
     if not client_id or not client_secret:
-        raise RuntimeError("EVE 应用凭据未配置（EVE_CLIENT_ID/EVE_CLIENT_SECRET）")
+        raise RuntimeError("EVE 应用凭据未配置（EVE_CLIENT_ID/EVE_CLIENT_SECRET 或 config.json）")
     return client_id, client_secret, callback_url
 
 

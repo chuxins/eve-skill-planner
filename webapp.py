@@ -350,7 +350,7 @@ def api_callback():
     with open(os.path.join(config.TOKEN_DIR, f"{char['id']}.json"), "w") as f:
         json.dump(token, f)
     log.info("已授权角色：%s (ID:%d)，scopes=%s", char["name"], char["id"], char["scopes"])
-    return redirect("/#/fitting?ok=1")
+    return redirect(f"http://8.138.203.48:{config.PORT}/#/fitting?ok=1")
 
 
 def main():
