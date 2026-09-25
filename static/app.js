@@ -36,8 +36,7 @@ createApp({
       fittingList: [], fittingsLoading: false, activeFitKey: null,
       sim: null, unknowns: [],
       eftText: '', saveName: '',
-      openShipModal: false, openEft: false, openSaveModal: false, openHistory: false,
-      history: JSON.parse(localStorage.getItem('sim_history') || '[]'),
+      openShipModal: false, openEft: false, openSaveModal: false,
       fitCache: {},      // 角色装配原始数据缓存 {fitting_id: {ship_tid, items}}
     };
   },
@@ -244,29 +243,6 @@ createApp({
         alert('已保存到 EVE');
       } catch (e) { alert('保存失败：' + e.message); }
     },
-    saveState() {
-      if (!this.sim) return;
-      this.history.unshift({
-        name: `${this.shipName}${this.fitName ? ' · ' + this.fitName : ''}`,
-        time: new Date().toLocaleString('zh-CN', { hour12: false }),
-        ship_tid: this.shipTid,
-        items: this.buildList.map((b) => [b.tid, b.qty]),
-      });
-      this.history = this.history.slice(0, 24);
-      localStorage.setItem('sim_history', JSON.stringify(this.history));
-    },
-    showHistory() { this.openHistory = true; },
-    closeHistory() { this.openHistory = false; },
-    restoreHistory(h) {
-      if (!h || !Array.isArray(h.items)) return;
-      this.shipTid = h.ship_tid;
-      const s = this.ships.find((x) => x.tid === h.ship_tid);
-      this.shipName = s ? s.name : '';
-      this.buildList = h.items.filter((p) => Array.isArray(p))
-        .map(([tid, qty]) => ({ tid, qty: qty || 1 }));
-      this.simulate();
-    },
-  },
   mounted() {
     this.searchShips();
     this.loadCharacters();

@@ -183,10 +183,7 @@ td:first-child,th:first-child{text-align:left}
     <section class="center">
       <div class="centerhead">
         <span><b>{{shipName}}</b> <span class="muted" v-if="fitName">· {{fitName}}</span></span>
-        <span>
-          <button @click="showHistory">模拟历史</button>
-          <button @click="saveState">保存状态</button>
-        </span>
+        <span></span>
       </div>
 
       <div class="shipview" v-if="shipTid">
@@ -405,16 +402,6 @@ td:first-child,th:first-child{text-align:left}
     </div>
   </div>
 
-  <div class="modal-mask" v-show="openHistory">
-    <div class="modal">
-      <h3>模拟历史 <span style="float:right;cursor:pointer;font-size:18px" @click.stop="closeHistory">&times;</span></h3>
-      <div class="itemrow" v-for="(h,i) in history" :key="i" @click="closeHistory();restoreHistory(h)">
-        <span>{{h.name}}</span><span class="grp">{{h.time}}</span>
-      </div>
-      <div class="empty" v-if="!history.length">暂无历史</div>
-      <div class="btns"><button type="button" @click.stop="closeHistory">关闭</button></div>
-    </div>
-  </div>
 </div>
 
 <script src="vendor/vue.global.prod.js"></script>
