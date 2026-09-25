@@ -53,6 +53,13 @@ createApp({ setup() {
   if(sim.value)doSim(); }
  function authStart(){ location.href='/api/auth/start?target=fitting'; }
 
+ // 弹药右键菜单
+ const chargeMenu=ref({show:false,x:0,y:0,weapon:null,charges:[]});
+ function cargeMenuOpen(it,e){ if(!sim.value)return; const w=(sim.value.firepower.weapons||[]).find(x=>x.tid===it.tid); if(!w)return;
+  const wsize=it.attrs?.[128]; const charges=(sim.value.other.charge||[]).filter(c=>c.attrs?.[128]===wsize);
+  chargeMenu.value={show:true,x:e.clientX,y:e.clientY,weapon:it,charges,current:w.charge}; }
+ function cargeMenuPick(c){ chargeMenu.value.show=false; }
+
  // 拖拽
  function dragStart(s,e){ dragSide=s; dragX=e.clientX; dragW0=s==='l'?leftW.value:rightW.value; if(s==='l')dragL.value=true; else dragR.value=true;
   document.addEventListener('mousemove',dragMove); document.addEventListener('mouseup',dragEnd); }
@@ -102,7 +109,7 @@ createApp({ setup() {
   try{await j(`/api/characters/${charId.value}/fittings/save`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({name:saveName.value.trim()||'模拟装配',items,ship_tid:sim.value.ship.tid})}); modSave.value=false; alert('已保存');}
   catch(e){alert('保存失败: '+e.message)}}
 
- return {lt,rt,ehp,shipTid,shipName,fitName,buildList:builds,sim,sq,sq2,iq,ships,iResults,chars,charId,charName,sk,isk,fitList,esiFits,eftText,saveName,modShip,modEft,modSave,expanded,leftW,rightW,dragL,dragR,
+ return {lt,rt,ehp,shipTid,shipName,fitName,buildList:builds,sim,sq,sq2,iq,ships,iResults,chars,charId,charName,sk,isk,fitList,esiFits,eftText,saveName,modShip,modEft,modSave,expanded,leftW,rightW,dragL,dragR,chargeMenu,
   hasSkills,res,slots,cap,emp,pct,over,shipGroups,fittingsByShip,fShips,filterShips2,shipsByGroup,
-  onChar,authStart,dragStart,pickShip,searchItems,addItem,rmItem,doSim,doEft,loadFit,saveLocal,saveEsi,icon,n,fmtT};
+  onChar,authStart,dragStart,pickShip,searchItems,addItem,rmItem,doSim,doEft,loadFit,saveLocal,saveEsi,icon,n,fmtT,cargeMenuOpen,cargeMenuPick};
 }}).mount('#app');
