@@ -18,7 +18,7 @@ createApp({ setup() {
  const eftText=ref(''), saveName=ref('');
  const modShip=ref(false), modEft=ref(false), modSave=ref(false);
  const expanded=reactive({});
-
+ const hasSkills=computed(()=>Object.keys(sk.value).length>0);
  const fittingsByShip=computed(()=>{ const m={}; fitList.value.forEach(f=>{ const s=f.ship||''; (m[s]=m[s]||[]).push(f); }); return m; });
  const res=computed(()=>sim.value?.resources||{});
  const slots=computed(()=>sim.value?.slots||{high:[],med:[],low:[],rig:[]});
