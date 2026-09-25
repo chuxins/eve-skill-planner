@@ -177,7 +177,7 @@ class Fit:
                     tgt = m.get("modifiedAttributeID")
                     if tgt is None or tgt == A_SKILL_LEVEL:
                         continue
-                    bonus[tgt] = base.get(tgt, 0.0) * level
+                    bonus[(sk_tid, tgt)] = base.get(tgt, 0.0) * level
         return bonus
 
     def _collect_skill_mods(self, bonus):
@@ -192,7 +192,7 @@ class Fit:
                     if m.get("domain") != "shipID":
                         continue
                     tgt = m.get("modifiedAttributeID")
-                    value = bonus.get(m.get("modifyingAttributeID"))
+                    value = bonus.get((sk_tid, m.get("modifyingAttributeID")))
                     if tgt is None or value is None:
                         continue
                     op = m.get("operation")
