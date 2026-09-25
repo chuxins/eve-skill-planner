@@ -73,7 +73,7 @@ th{color:var(--m);font-weight:400;background:var(--p2)} td:first-child,th:first-
  <div class="pad">
   <!-- 船体 -->
   <template v-if="lt==='hull'">
-   <input v-model="sq" placeholder="搜舰船…" style="width:100%;margin-bottom:6px" @input="filterShips">
+   <input v-model="sq" placeholder="搜舰船…" style="width:100%;margin-bottom:6px">
    <div class="slist" v-if="fShips.length">
     <div v-for="g in shipGroups" :key="g"><div class="m" style="padding:2px 6px;font-size:11px">{{g}}</div>
      <div v-for="s in shipsByGroup(g)" :key="s.tid" class="item-row" :class="{sel:s.tid===shipTid}" @click="pickShip(s.tid)">{{s.name}}</div>
@@ -228,5 +228,5 @@ th{color:var(--m);font-weight:400;background:var(--p2)} td:first-child,th:first-
 </div>
 </div>
 <script src="/static/vendor/vue.global.prod.js"></script>
-<script src="/static/app.js?v=8"></script>
+<script src="/static/app.js?v=9"></script>
 </body></html>
