@@ -75,8 +75,12 @@ th{color:var(--m);font-weight:400;background:var(--p2)} td:first-child,th:first-
   <template v-if="lt==='hull'">
    <input v-model="sq" placeholder="搜舰船…" style="width:100%;margin-bottom:4px;flex-shrink:0">
    <div class="slist" v-if="fShips.length">
-    <div v-for="g in shipGroups" :key="g"><div class="m" style="padding:2px 6px;font-size:11px">{{g}}</div>
-     <div v-for="s in shipsByGroup(g)" :key="s.tid" class="item-row" :class="{sel:s.tid===shipTid}" @click="pickShip(s.tid)">{{s.name}}</div>
+    <div v-for="g in shipGroups" :key="g">
+     <div class="item-row" style="cursor:pointer;font-weight:600;gap:4px" @click="expanded[g]=!expanded[g]">
+      <span style="font-size:11px;width:12px;flex-shrink:0">{{expanded[g]?'▼':'▶'}}</span>
+      {{g}} <span class="m" style="font-size:11px;font-weight:400;margin-left:auto">{{shipsByGroup(g).length}} 艘</span>
+     </div>
+     <div v-show="expanded[g]" v-for="s in shipsByGroup(g)" :key="s.tid" class="item-row" :class="{sel:s.tid===shipTid}" @click="pickShip(s.tid)" style="padding-left:22px">{{s.name}}</div>
     </div>
    </div>
    <div class="m" style="padding:6px;flex-shrink:0" v-else>匹配{{sq?'无结果':'输入搜索'}}</div>
@@ -226,5 +230,5 @@ th{color:var(--m);font-weight:400;background:var(--p2)} td:first-child,th:first-
 </div>
 </div>
 <script src="/static/vendor/vue.global.prod.js"></script>
-<script src="/static/app.js?v=10"></script>
+<script src="/static/app.js?v=11"></script>
 </body></html>

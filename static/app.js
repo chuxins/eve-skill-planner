@@ -17,6 +17,7 @@ createApp({ setup() {
  const fitList=ref([]);
  const eftText=ref(''), saveName=ref('');
  const modShip=ref(false), modEft=ref(false), modSave=ref(false);
+ const expanded=reactive({});
 
  const hasSkills=computed(()=>Object.keys(sk.value).length>0);
  const res=computed(()=>sim.value?.resources||{});
@@ -72,7 +73,7 @@ createApp({ setup() {
   try{await j(`/api/characters/${charId.value}/fittings/save`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({name:saveName.value.trim()||'模拟装配',items,ship_tid:sim.value.ship.tid})}); modSave.value=false; alert('已保存');}
   catch(e){alert('保存失败: '+e.message)}}
 
- return {lt,rt,ehp,shipTid,shipName,fitName,buildList:builds,sim,sq,sq2,iq,ships,iResults,chars,charId,sk,isk,fitList,eftText,saveName,modShip,modEft,modSave,
+ return {lt,rt,ehp,shipTid,shipName,fitName,buildList:builds,sim,sq,sq2,iq,ships,iResults,chars,charId,sk,isk,fitList,eftText,saveName,modShip,modEft,modSave,expanded,
   hasSkills,res,slots,cap,emp,pct,over,shipGroups,fShips,filterShips2,shipsByGroup,
   onChar,authStart,pickShip,searchItems,addItem,rmItem,doSim,doEft,loadFit,saveLocal,saveEsi,icon,n,fmtT};
 }}).mount('#app');
