@@ -255,12 +255,14 @@ createApp({
       this.history = this.history.slice(0, 24);
       localStorage.setItem('sim_history', JSON.stringify(this.history));
     },
-    openHistory() { this.openHistory = true; },
+    showHistory() { this.openHistory = true; },
     restoreHistory(h) {
+      if (!h || !Array.isArray(h.items)) return;
       this.shipTid = h.ship_tid;
       const s = this.ships.find((x) => x.tid === h.ship_tid);
       this.shipName = s ? s.name : '';
-      this.buildList = h.items.map(([tid, qty]) => ({ tid, qty }));
+      this.buildList = h.items.filter((p) => Array.isArray(p))
+        .map(([tid, qty]) => ({ tid, qty: qty || 1 }));
       this.simulate();
     },
   },

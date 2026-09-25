@@ -184,7 +184,7 @@ td:first-child,th:first-child{text-align:left}
       <div class="centerhead">
         <span><b>{{shipName}}</b> <span class="muted" v-if="fitName">· {{fitName}}</span></span>
         <span>
-          <button @click="openHistory">模拟历史</button>
+          <button @click="showHistory">模拟历史</button>
           <button @click="saveState">保存状态</button>
         </span>
       </div>
@@ -408,7 +408,7 @@ td:first-child,th:first-child{text-align:left}
   <div class="modal-mask" v-if="openHistory" @click.self="openHistory=false">
     <div class="modal">
       <h3>模拟历史</h3>
-      <div class="itemrow" v-for="(h,i) in history" :key="i" @click="restoreHistory(h);openHistory=false">
+      <div class="itemrow" v-for="(h,i) in history" :key="i" @click="openHistory=false;restoreHistory(h)">
         <span>{{h.name}}</span><span class="grp">{{h.time}}</span>
       </div>
       <div class="empty" v-if="!history.length">暂无历史</div>
