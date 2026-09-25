@@ -7,28 +7,33 @@
 <style>
 :root{--bg:#14161a;--p:#1c1f26;--p2:#22262f;--b:#2e333d;--t:#cfd4dc;--m:#8b93a1;--a:#7aa2ff;--r:#ff6b6b;--g:#5fe08b;--y:#e8c06a}
 *{box-sizing:border-box;margin:0;padding:0}
+html,body{height:100%;overflow:hidden}
 body{background:var(--bg);color:var(--t);font:15.6px/1.5 "Microsoft YaHei","PingFang SC",sans-serif}
+#app{display:flex;flex-direction:column;height:100%}
 input,select,textarea,button{font:inherit;background:#171a20;color:var(--t);border:1px solid var(--b);border-radius:5px;padding:6px 10px}
 button{cursor:pointer;background:var(--p2);min-width:48px;white-space:nowrap}
 button.sm{padding:4px 7px;font-size:13px}
 button:hover{border-color:var(--a)} button.prim{background:#2b4a7a;border-color:#3a5f9e}
 input:focus,textarea:focus,select:focus{outline:none;border-color:var(--a)}
 a{color:var(--a);cursor:pointer}.m{color:var(--m)}.r{color:var(--r)}.g{color:var(--g)}
-header{display:flex;align-items:center;gap:14px;padding:7px 16px;border-bottom:1px solid var(--b);background:var(--p);font-size:15.6px}
-main{display:grid;min-height:calc(100vh - 49px);position:relative}
+header{display:flex;align-items:center;gap:14px;padding:7px 16px;border-bottom:1px solid var(--b);background:var(--p);font-size:15.6px;flex:0 0 auto}
+/* 三栏各自独立滚动：main 锁定为视口剩余高度，行高固定，列内 overflow-y 才成为真正的滚动容器 */
+main{display:grid;flex:1 1 auto;min-height:0;overflow:hidden;grid-template-rows:minmax(0,1fr);position:relative}
 .drag{width:5px;cursor:col-resize;background:var(--b);z-index:5;transition:background .15s}
 .drag:hover,.drag.active{background:var(--a)}
-.l,.r{background:var(--p);overflow-y:auto}
+.l,.r{background:var(--p);overflow-y:auto;min-height:0;overscroll-behavior:contain}
 .l{display:flex;flex-direction:column}
-.c{overflow-y:auto;padding:14px}
+.c{overflow-y:auto;padding:14px;min-height:0;overscroll-behavior:contain}
 .tabs{display:flex;border-bottom:1px solid var(--b)} .tabs button{flex:1;border:none;border-radius:0;background:transparent;padding:8px 0}
 .tabs button.on{color:#fff;border-bottom:2px solid var(--a)}
 .pad{padding:10px;flex:1;overflow-y:auto}
 .row{display:flex;align-items:center;gap:7px;padding:3px 0}
-.item-row{cursor:pointer;padding:4px 7px}
+.item-row{cursor:pointer;padding:6px 10px;min-height:32px;display:flex;align-items:center}
 .item-row:hover{background:var(--p2)} .item-row.sel{background:#243651}
 .item-row img{width:24px;height:24px;border-radius:3px}
-.slist{border:1px solid var(--b);border-radius:4px;overflow-y:auto;flex:1;min-height:0}
+/* 不加 overflow：否则本层成为「永不滚动的滚动容器」，会吃掉子项的 position:sticky
+   （真正的滚动容器是 .pad，分组标题要相对它吸顶） */
+.slist{border:1px solid var(--b);border-radius:4px;flex:1;min-height:0}
 .slot{margin-bottom:8px}
 .slot h4{padding:3px 8px;border-radius:4px;font-size:12px;margin-bottom:2px;font-weight:400}
 .high h4{background:#3a2428}.med h4{background:#1e2b3a}.low h4{background:#2b2415}.rig h4{background:#1d2b1d}
@@ -53,7 +58,6 @@ th{color:var(--m);font-weight:400;background:var(--p2)} td:first-child,th:first-
 .modal h3{margin-bottom:10px} .modal textarea{width:100%;height:180px;font-family:monospace}
 .modal .act{display:flex;gap:8px;margin-top:12px;justify-content:flex-end}
 .qty{width:50px;padding:2px 4px}.chip{background:var(--p2);border:1px solid var(--b);border-radius:10px;padding:1px 7px;font-size:11px;color:var(--m)}
-.ctxmenu{position:fixed;z-index:999;background:var(--p);border:2px solid var(--a);border-radius:6px;padding:4px 0;min-width:200px;box-shadow:0 4px 16px rgba(0,0,0,.7)}
 </style>
 </head>
 <body>
@@ -77,40 +81,87 @@ th{color:var(--m);font-weight:400;background:var(--p2)} td:first-child,th:first-
   <!-- 船体 -->
   <template v-if="lt==='hull'">
    <input v-model="sq" placeholder="搜舰船…" style="width:100%;margin-bottom:4px;flex-shrink:0">
-   <div class="slist" v-if="fShips.length">
-    <template v-for="g in shipGroups" :key="g">
-    <template v-if="shipsByGroup(g).length">
-     <div class="item-row" style="cursor:pointer;font-weight:600;gap:4px" @click="expanded[g]=!expanded[g]">
-      <span style="font-size:11px;width:12px;flex-shrink:0">{{expanded[g]?'▼':'▶'}}</span>
-      {{g}} <span class="m" style="font-size:11px;font-weight:400;margin-left:auto">{{shipsByGroup(g).length}} 艘</span>
+   <div style="display:flex;gap:4px;margin-bottom:6px;flex-wrap:wrap">
+    <button class="sm" :class="{prim:!raceTab||raceTab==='all'}" @click="setRaceTab(null)">全部</button>
+    <button v-for="r in shipRaces" :key="r" class="sm" :class="{prim:raceTab===r}" @click="setRaceTab(r)">{{r}}</button>
+   </div>
+   <div class="slist" v-if="shipCount">
+    <div v-for="g in shownShips" :key="g.key" style="margin-bottom:2px">
+     <div class="item-row" style="font-weight:600;gap:6px;position:sticky;top:0;background:var(--p);z-index:2;border-bottom:1px solid var(--b)" @click="expanded[g.key]=!expanded[g.key]">
+      <span style="font-size:13px;width:14px;text-align:center;flex-shrink:0">{{expanded[g.key]?'▼':'▶'}}</span>
+      <span style="font-size:14px">{{g.key}}</span>
+      <span class="m" style="font-size:12px;font-weight:400;margin-left:auto">{{g.count}} 艘</span>
      </div>
-     <template v-if="expanded[g]">
-      <div v-for="s in shipsByGroup(g)" :key="s.tid">
-       <div class="item-row" :class="{sel:s.tid===shipTid}" @click="pickShip(s.tid)" style="padding-left:22px">{{s.name}}</div>
-       <div v-for="f in (fittingsByShip[s.name]||[])" :key="f.k" class="item-row" @click="loadFit(f)" style="padding-left:38px;font-size:12px;color:var(--a)">{{f.esi?'🌐':'⚙'}} {{f.name}}</div>
+     <template v-if="expanded[g.key]">
+      <div v-for="s in g.subs" :key="s.key">
+       <div class="item-row" style="padding-left:22px;gap:6px;min-height:30px;cursor:pointer;border-left:2px solid var(--b)" @click="expanded[g.key+'/'+s.key]=!expanded[g.key+'/'+s.key]">
+        <span style="font-size:12px;width:12px;text-align:center;flex-shrink:0;color:var(--t)">{{expanded[g.key+'/'+s.key]?'▼':'▶'}}</span>
+        <span style="font-size:13px;color:var(--t)">{{s.key}}</span>
+        <span class="m" style="font-size:11px;margin-left:auto">{{s.items.length}} 艘</span>
+       </div>
+       <template v-if="expanded[g.key+'/'+s.key]">
+        <div v-for="sh in s.items" :key="sh.tid">
+         <div class="item-row" :class="{sel:sh.tid===shipTid}" @click="pickShip(sh.tid)" style="padding-left:36px;gap:6px"><img :src="icon(sh.tid)" style="width:22px;height:22px;flex-shrink:0">{{sh.name}}</div>
+         <div v-for="f in (fittingsByShip[sh.name]||[])" :key="f.k" class="item-row" @click="loadFit(f)" style="padding-left:52px;font-size:12px;color:var(--a)">{{f.esi?'🌐':'⚙'}} {{f.name}}</div>
+        </div>
+       </template>
       </div>
      </template>
-    </template>
-   </template>
+    </div>
    </div>
-   <div class="m" style="padding:6px" v-if="!fShips.length">匹配{{sq?'无结果':'输入搜索'}}</div>
+   <div class="m" style="padding:6px" v-if="!shipCount">匹配{{sq?'无结果':'输入搜索'}}</div>
   </template>
   <!-- 装备/弹药 -->
   <template v-else>
+   <div style="display:flex;flex-direction:column;min-height:100%">
    <div class="row" style="margin-bottom:4px"><input v-model="iq" placeholder="搜索…" style="flex:1" @keyup.enter="searchItems"><button @click="searchItems">搜</button></div>
-   <div style="max-height:180px;overflow-y:auto;margin-bottom:8px">
-    <div v-for="r in iResults" :key="r.tid" class="item-row" @click="addItem(r)">
-     <img :src="icon(r.tid)">{{r.name}} <span class="m">{{r.group}}</span>
-     <span style="margin-left:auto;font-size:11px;color:var(--m)">{{r.pg!=null?'PG '+r.pg:''}} {{r.cpu!=null?'CPU '+r.cpu:''}}</span></div>
+   <div style="display:flex;gap:4px;margin-bottom:6px;flex-wrap:wrap" v-if="lt==='mod'">
+    <button class="sm" :class="{prim:!slotTab}" @click="setSlotTab(null)">全部</button>
+    <button class="sm" :class="{prim:slotTab==='high'}" @click="setSlotTab('high')">高槽</button>
+    <button class="sm" :class="{prim:slotTab==='med'}" @click="setSlotTab('med')">中槽</button>
+    <button class="sm" :class="{prim:slotTab==='low'}" @click="setSlotTab('low')">低槽</button>
+    <button class="sm" :class="{prim:slotTab==='rig'}" @click="setSlotTab('rig')">改装件</button>
+    <button class="sm" :class="{prim:slotTab==='drone'}" @click="setSlotTab('drone')">无人机</button>
+   </div>
+   <div style="display:flex;gap:4px;margin-bottom:6px;flex-wrap:wrap" v-if="lt==='ammo'">
+    <button class="sm" :class="{prim:ammoTab==='t1'}" @click="setAmmoTab('t1')">T1</button>
+    <button class="sm" :class="{prim:ammoTab==='t2'}" @click="setAmmoTab('t2')">T2</button>
+    <button class="sm" :class="{prim:ammoTab==='faction'}" @click="setAmmoTab('faction')">势力</button>
+   </div>
+   <div style="flex:1"><!-- 同 .slist：勿加 overflow，否则分组标题 sticky 失效 -->
+    <div v-for="g in shownGroups" :key="g.key" style="margin-bottom:2px">
+     <div class="item-row" style="font-weight:600;gap:6px;position:sticky;top:0;background:var(--p);z-index:2;border-bottom:1px solid var(--b)" @click="expandedEq[g.key]=!expandedEq[g.key]">
+      <span style="font-size:13px;width:14px;text-align:center;flex-shrink:0">{{expandedEq[g.key]?'▼':'▶'}}</span>
+      <span style="font-size:14px">{{g.key}}</span>
+      <span class="m" style="font-size:12px;font-weight:400;margin-left:auto">{{g.items.length}} 件</span>
+     </div>
+     <template v-if="expandedEq[g.key]">
+      <template v-if="!g.subs">
+       <div v-for="r in g.items" :key="r.tid" class="item-row" @click="addItem(r)" style="padding-left:26px">
+        <img :src="icon(r.tid)" style="width:22px;height:22px;flex-shrink:0">{{r.name}}<span class="chip" style="color:var(--y);font-size:10px" v-if="r.meta===4">势力</span><span class="chip" style="color:var(--a);font-size:10px" v-if="r.meta===2">T2</span>
+        <span style="margin-left:auto;font-size:11px;color:var(--m)">{{r.pg!=null?'PG '+r.pg:''}} {{r.cpu!=null?'CPU '+r.cpu:''}}</span>
+       </div>
+      </template>
+      <template v-if="g.subs">
+       <div v-for="(sitems,sn) in g.subs" :key="sn">
+        <div class="item-row" style="padding-left:22px;gap:6px;min-height:30px;cursor:pointer;border-left:2px solid var(--b)" @click="expandedEq[g.key+'/'+sn]=!expandedEq[g.key+'/'+sn]">
+         <span style="font-size:12px;width:12px;text-align:center;flex-shrink:0;color:var(--t)">{{expandedEq[g.key+'/'+sn]?'▼':'▶'}}</span>
+         <span style="font-size:13px;color:var(--t)">{{sn}}</span>
+         <span class="m" style="font-size:11px;margin-left:auto">{{sitems.length}} 种</span>
+        </div>
+        <template v-if="expandedEq[g.key+'/'+sn]">
+         <div v-for="r in sitems" :key="r.tid" class="item-row" @click="addItem(r)" style="padding-left:36px">
+          <img :src="icon(r.tid)" style="width:22px;height:22px;flex-shrink:0">{{r.name}}<span class="chip" style="color:var(--m);font-size:10px" v-if="r.meta===1">T1</span><span class="chip" style="color:var(--y);font-size:10px" v-if="r.meta===4">势力</span><span class="chip" style="color:var(--a);font-size:10px" v-if="r.meta===2">T2</span>
+          <span style="margin-left:auto;font-size:11px;color:var(--m)">{{r.pg!=null?'PG '+r.pg:''}} {{r.cpu!=null?'CPU '+r.cpu:''}}</span>
+         </div>
+        </template>
+       </div>
+      </template>
+     </template>
+    </div>
     <div class="m" style="padding:4px" v-if="!iResults.length&&iq">无结果</div>
    </div>
-   <div><b>装配单</b> <button class="sm" @click="buildList=[];doSim()">清空</button></div>
-   <div v-for="(it,i) in buildList" :key="i" class="row">
-   <img :src="icon(it.tid)" style="width:22px;height:22px">{{it.name}}
-   <span style="font-size:11px;color:var(--m);white-space:nowrap">{{it.pg!=null?'PG '+it.pg:''}} {{it.cpu!=null?'CPU '+it.cpu:''}}</span>
-   <input class="qty" v-model.number="it.qty" @change="doSim"><button class="sm" @click="buildList.splice(i,1);doSim()">✕</button></div>
-   <div class="m" style="padding:4px" v-if="!buildList.length">未添加</div>
-   <button class="prim" style="width:100%;margin-top:6px" @click="doSim">模拟</button>
+   </div>
   </template>
  </div>
  <div style="display:flex;gap:6px;padding:8px;border-top:1px solid var(--b);flex-wrap:wrap">
@@ -127,15 +178,15 @@ th{color:var(--m);font-weight:400;background:var(--p2)} td:first-child,th:first-
  <div class="m" style="text-align:center;padding:40px" v-else>← 左侧选舰船或粘贴EFT</div>
  <template v-if="sim">
   <div class="slot high" v-if="slots.high.length||cap('high')"><h4>高槽 {{slots.high.length}}/{{cap('high')}}</h4>
-   <div v-for="(it,i) in slots.high" :key="i" class="sitem" @click="rmItem(it)" @contextmenu.prevent="chargeMenuOpen(it,$event)"><img :src="icon(it.tid)"><span style="flex:1">{{it.name}}</span><span style="font-size:11px;color:var(--m)">PG {{n(it.attrs[30])}} CPU {{n(it.attrs[50])}} <span v-if="it.attrs[6]">Cap {{n(it.attrs[6])}}</span></span><span class="chip" v-if="it.qty>1">×{{it.qty}}</span></div>
+   <div v-for="(it,i) in slots.high" :key="i" class="sitem" @click="rmItem(it)"><img :src="icon(it.tid)"><span style="flex:1">{{it.name}}</span><span style="font-size:11px;color:var(--m)">PG {{n(it.attrs[30])}} CPU {{n(it.attrs[50])}} <span v-if="it.attrs[6]">Cap {{n(it.attrs[6])}}</span></span><span class="chip" v-if="it.qty>1">×{{it.qty}}</span></div>
    <div v-for="i in emp('high')" :key="'he'+i" class="sitem" style="opacity:.3"><span class="m">(空)</span></div>
   </div>
   <div class="slot med" v-if="slots.med.length||cap('med')"><h4>中槽 {{slots.med.length}}/{{cap('med')}}</h4>
-   <div v-for="(it,i) in slots.med" :key="i" class="sitem" @click="rmItem(it)" @contextmenu.prevent="chargeMenuOpen(it,$event)"><img :src="icon(it.tid)"><span style="flex:1">{{it.name}}</span><span style="font-size:11px;color:var(--m)">PG {{n(it.attrs[30])}} CPU {{n(it.attrs[50])}} <span v-if="it.attrs[6]">Cap {{n(it.attrs[6])}}</span></span></div>
+   <div v-for="(it,i) in slots.med" :key="i" class="sitem" @click="rmItem(it)"><img :src="icon(it.tid)"><span style="flex:1">{{it.name}}</span><span style="font-size:11px;color:var(--m)">PG {{n(it.attrs[30])}} CPU {{n(it.attrs[50])}} <span v-if="it.attrs[6]">Cap {{n(it.attrs[6])}}</span></span></div>
    <div v-for="i in emp('med')" :key="'me'+i" class="sitem" style="opacity:.3"><span class="m">(空)</span></div>
   </div>
   <div class="slot low" v-if="slots.low.length||cap('low')"><h4>低槽 {{slots.low.length}}/{{cap('low')}}</h4>
-   <div v-for="(it,i) in slots.low" :key="i" class="sitem" @click="rmItem(it)" @contextmenu.prevent="chargeMenuOpen(it,$event)"><img :src="icon(it.tid)"><span style="flex:1">{{it.name}}</span><span style="font-size:11px;color:var(--m)">PG {{n(it.attrs[30])}} CPU {{n(it.attrs[50])}} <span v-if="it.attrs[6]">Cap {{n(it.attrs[6])}}</span></span></div>
+   <div v-for="(it,i) in slots.low" :key="i" class="sitem" @click="rmItem(it)"><img :src="icon(it.tid)"><span style="flex:1">{{it.name}}</span><span style="font-size:11px;color:var(--m)">PG {{n(it.attrs[30])}} CPU {{n(it.attrs[50])}} <span v-if="it.attrs[6]">Cap {{n(it.attrs[6])}}</span></span></div>
    <div v-for="i in emp('low')" :key="'le'+i" class="sitem" style="opacity:.3"><span class="m">(空)</span></div>
   </div>
   <div class="slot rig" v-if="slots.rig.length||cap('rig')"><h4>改装件 {{slots.rig.length}}/{{cap('rig')}}</h4>
@@ -228,7 +279,7 @@ th{color:var(--m);font-weight:400;background:var(--p2)} td:first-child,th:first-
 <!-- ===== 模态 ===== -->
 <div class="modal-mask" v-if="modShip">
  <div class="modal"><h3>选择舰船</h3><input v-model="sq2" placeholder="搜索…" style="width:100%"><div style="max-height:300px;overflow-y:auto;margin-top:6px">
-  <div v-for="s in filterShips2" :key="s.tid" class="item-row" @click="pickShip(s.tid);modShip=false"><img :src="icon(s.tid)">{{s.name}} <span class="m">{{s.group}}</span></div></div>
+  <div v-for="s in filterShips2" :key="s.tid" class="item-row" @click="pickShip(s.tid);modShip=false"><img :src="icon(s.tid)">{{s.name}} <span class="m">{{s.race}} · {{s.group}}</span></div></div>
   <div class="act"><button @click="modShip=false">取消</button></div></div>
 </div>
 <div class="modal-mask" v-if="modEft">
@@ -240,15 +291,6 @@ th{color:var(--m);font-weight:400;background:var(--p2)} td:first-child,th:first-
   <div class="act"><button @click="modSave=false">取消</button><button @click="saveLocal">本地</button><button class="prim" :disabled="!charId" @click="saveEsi">EVE</button></div>
   <div class="m" style="margin-top:6px" v-if="!charId">保存到 EVE 需选择角色并授权 write scope</div></div>
 </div>
-<!-- 右键弹药菜单 -->
-<div class="ctxmenu" v-if="chargeMenu.show" :style="{left:chargeMenu.x+'px',top:chargeMenu.y+'px'}" @mouseleave="chargeMenu.show=false">
- <div class="m" style="padding:2px 6px" v-if="chargeMenu.current">已装填: {{chargeMenu.current}}</div>
- <div class="m" style="padding:2px 6px" v-if="!chargeMenu.charges.length">无可用弹药</div>
- <div v-for="c in chargeMenu.charges" :key="c.tid" class="item-row" @click="chargeMenuPick(c)" style="padding:2px 8px;gap:4px">
-  <img :src="icon(c.tid)" style="width:20px;height:20px">{{c.name}} <span class="m">×{{c.qty}}</span>
- </div>
-</div>
-</div>
 <script src="/static/vendor/vue.global.prod.js"></script>
-<script src="/static/app.js?v=31"></script>
+<script src="/static/app.js?v=54"></script>
 </body></html>

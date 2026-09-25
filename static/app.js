@@ -19,6 +19,7 @@ createApp({ setup() {
  const chars=ref(cacheGet('chars',6e5)||[]), charId=ref(cacheGet('cid',864e5)||null), charName=ref(cacheGet('cname',864e5)||''), sk=ref({}), isk=ref(cacheGet('isk_'+String(cacheGet('cid',864e5)||0),6e4)||'—');
  const fitList=ref([]), esiFits=ref({});
  const eftText=ref(''), saveName=ref('');
+ const slotTab=ref(null), ammoTab=ref('t1'), raceTab=ref(null);
  const modShip=ref(false), modEft=ref(false), modSave=ref(false);
  const expanded=reactive({});
  const leftW=ref(parseInt(localStorage.getItem('spl_lw'))||360), rightW=ref(parseInt(localStorage.getItem('spl_rw'))||355);
@@ -34,10 +35,24 @@ createApp({ setup() {
  const pct=r=>r?.cap?Math.min(100,r.used/r.cap*100):0;
  const over=k=>res.value[k]?.used>res.value[k]?.cap?'over':'';
 
- const shipGroups=computed(()=>[...new Set(ships.value.map(s=>s.group))].sort((a,b)=>a.localeCompare(b,'zh')));
- const fShips=computed(()=>{ const q=sq.value.trim().toLowerCase(); return q?ships.value.filter(s=>s.name.toLowerCase().includes(q)||(s.name_en||'').toLowerCase().includes(q)):ships.value; });
+ // 舰船：舰种 → 种族 → 舰船（两级分组，逻辑同装备标签）
+ const RACE_ORDER=['艾玛','加达里','盖伦特','米玛塔尔'];
+ const shipRaces=computed(()=>{ const s=new Set(ships.value.map(x=>x.race||'其他'));
+  return [...RACE_ORDER.filter(r=>s.has(r)), ...[...s].filter(r=>!RACE_ORDER.includes(r)).sort((a,b)=>a.localeCompare(b,'zh'))]; });
+ const shipTree=computed(()=>{ const q=sq.value.trim().toLowerCase();
+  const list=q?ships.value.filter(s=>s.name.toLowerCase().includes(q)||(s.name_en||'').toLowerCase().includes(q)):ships.value;
+  const gm={}; list.forEach(s=>{ const g=s.group||'其他', r=s.race||'其他'; const sub=(gm[g]=gm[g]||{})[r]||(gm[g][r]=[]); sub.push(s); });
+  return Object.keys(gm).sort((a,b)=>a.localeCompare(b,'zh')).map(g=>{ const rm=gm[g];
+   const subs=shipRaces.value.filter(r=>rm[r]).map(r=>({key:r,items:rm[r]}));
+   return {key:g,count:subs.reduce((n,s)=>n+s.items.length,0),subs}; }); });
+ const shownShips=computed(()=>{ const t=raceTab.value; if(!t||t==='all') return shipTree.value;
+  return shipTree.value.map(g=>{ const subs=g.subs.filter(s=>s.key===t);
+   return subs.length?{key:g.key,count:subs.reduce((n,s)=>n+s.items.length,0),subs}:null; }).filter(Boolean); });
+ const shipCount=computed(()=>shownShips.value.reduce((n,g)=>n+g.count,0));
  const filterShips2=computed(()=>{ const q=sq2.value.trim().toLowerCase(); return q?ships.value.filter(s=>s.name.toLowerCase().includes(q)):ships.value; });
- function shipsByGroup(g){ const q=sq.value.trim().toLowerCase(); return fShips.value.filter(s=>s.group===g); }
+ const expandedEq=reactive({});
+ const eqGroups=computed(()=>{ const m={}; const kf=lt.value==='ammo'?'family':'group'; iResults.value.forEach(r=>{ const k=r[kf]||'其他'; (m[k]=m[k]||[]).push(r); }); return Object.keys(m).sort((a,b)=>a.localeCompare(b,'zh')).map(k=>{ const items=m[k]; let subs=null; if(lt.value==='ammo'){ const sm={}; items.forEach(r=>{ const sg=r.group||'其他'; (sm[sg]=sm[sg]||[]).push(r); }); subs={}; Object.keys(sm).sort((a,b)=>a.localeCompare(b,'zh')).forEach(sk=>subs[sk]=sm[sk]); } return {key:k,items,subs}; }); });
+ const shownGroups=computed(()=>{ if(lt.value!=='ammo'||!ammoTab.value||ammoTab.value==='all') return eqGroups.value; const meta=ammoTab.value==='t1'?1:ammoTab.value==='t2'?2:4; return eqGroups.value.map(g=>({key:g.key,items:g.items.filter(r=>r.meta===meta),subs:g.subs?Object.fromEntries(Object.entries(g.subs).map(([k,v])=>[k,v.filter(r=>r.meta===meta)]).filter(([,v])=>v.length)):null})).filter(g=>g.items.length); });
 
  async function j(p,o){ return API(p,o); }
 
@@ -53,24 +68,6 @@ createApp({ setup() {
   if(sim.value)doSim(); }
  function authStart(){ location.href='/api/auth/start?target=fitting'; }
 
- // 弹药右键菜单
- const chargeMenu=ref({show:false,x:0,y:0,weapon:null,charges:[]});
- function chargeMenuOpen(it,e){
-  e.preventDefault();
-  if(!sim.value) return;
-  chargeMenu.value.show=false;
-  let charges=[], current=null;
-  const wsize=it.attrs[128];
-  if(wsize){
-   charges=(sim.value.other.charge||[]).filter(c=>
-    c.attrs[128]===wsize && (c.attrs[114]||c.attrs[116]||c.attrs[117]||c.attrs[118]));
-   const w=(sim.value.firepower.weapons||[]).find(x=>x.tid===it.tid);
-   if(w) current=w.charge;
-  }
-  chargeMenu.value={show:true,x:e.clientX,y:e.clientY,weapon:it,charges,current};
-}
-function chargeMenuPick(c){ chargeMenu.value.show=false; }
-
  // 拖拽
  function dragStart(s,e){ dragSide=s; dragX=e.clientX; dragW0=s==='l'?leftW.value:rightW.value; if(s==='l')dragL.value=true; else dragR.value=true;
   document.addEventListener('mousemove',dragMove); document.addEventListener('mouseup',dragEnd); }
@@ -81,10 +78,14 @@ function chargeMenuPick(c){ chargeMenu.value.show=false; }
 
  // 舰船
  onMounted(async()=>{ ships.value=await j('/api/ships'); loadChars(); try{const l=await j('/api/local/fittings');fitList.value=l.map(f=>({k:'l'+f.id,name:f.name,ship:f.ship_name,data:f.eft}));}catch(e){} });
- function pickShip(tid){ shipTid.value=tid; const s=ships.value.find(x=>x.tid===tid); shipName.value=s?s.name:''; fitName.value=''; doSim(); }
+ watch(lt,v=>{ if(v==='mod'||v==='ammo'){ iq.value=''; slotTab.value=null; ammoTab.value='t1'; searchItems(); } });
+ function pickShip(tid){ shipTid.value=tid; const s=ships.value.find(x=>x.tid===tid); shipName.value=s?s.name:''; fitName.value=''; builds.value=[]; doSim(); }
 
  // 搜索
- async function searchItems(){ const q=iq.value.trim(); if(!q)return; const cat=lt.value==='mod'?7:8; iResults.value=await j(`/api/search?q=${encodeURIComponent(q)}&cat=${cat}`); }
+ async function searchItems(){ let ps=[]; const st=slotTab.value; if(lt.value==='ammo'){ps.push('cat=8')}else if(st==='drone'){ps.push('cat=18')}else if(st){ps.push('cat=7');ps.push('slot='+st)}else{ps.push('cat=7,18')} if(!iq.value.trim())ps.push('limit=1000'); iResults.value=await j(`/api/search?q=${encodeURIComponent(iq.value.trim())}`+(ps.length?'&'+ps.join('&'):'')); }
+ function setSlotTab(v){ slotTab.value=v; searchItems(); }
+ function setAmmoTab(v){ ammoTab.value=v; }
+ function setRaceTab(v){ raceTab.value=v; }
  function addItem(r){ const hit=builds.value.find(b=>b.tid===r.tid); if(hit)hit.qty++; else builds.value.push({tid:r.tid,name:r.name,qty:1,pg:r.pg,cpu:r.cpu}); doSim(); }
  function rmItem(it){ builds.value=builds.value.filter(b=>!(b.tid===it.tid&&b.qty===it.qty)); doSim(); }
 
@@ -120,7 +121,7 @@ function chargeMenuPick(c){ chargeMenu.value.show=false; }
   try{await j(`/api/characters/${charId.value}/fittings/save`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({name:saveName.value.trim()||'模拟装配',items,ship_tid:sim.value.ship.tid})}); modSave.value=false; alert('已保存');}
   catch(e){alert('保存失败: '+e.message)}}
 
- return {lt,rt,ehp,shipTid,shipName,fitName,buildList:builds,sim,sq,sq2,iq,ships,iResults,chars,charId,charName,sk,isk,fitList,esiFits,eftText,saveName,modShip,modEft,modSave,expanded,leftW,rightW,dragL,dragR,chargeMenu,
-  hasSkills,res,slots,cap,emp,pct,over,shipGroups,fittingsByShip,fShips,filterShips2,shipsByGroup,
-  onChar,authStart,dragStart,pickShip,searchItems,addItem,rmItem,doSim,doEft,loadFit,saveLocal,saveEsi,icon,n,fmtT,chargeMenuOpen,chargeMenuPick};
+ return {lt,rt,ehp,shipTid,shipName,fitName,buildList:builds,sim,sq,sq2,iq,ships,iResults,chars,charId,charName,sk,isk,fitList,esiFits,eftText,saveName,slotTab,ammoTab,raceTab,modShip,modEft,modSave,expanded,expandedEq,eqGroups,shownGroups,leftW,rightW,dragL,dragR,
+  hasSkills,res,slots,cap,emp,pct,over,shipRaces,shipTree,shownShips,shipCount,fittingsByShip,filterShips2,setRaceTab,
+  onChar,authStart,dragStart,pickShip,searchItems,setSlotTab,setAmmoTab,addItem,rmItem,doSim,doEft,loadFit,saveLocal,saveEsi,icon,n,fmtT};
 }}).mount('#app');

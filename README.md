@@ -20,6 +20,13 @@ nohup python3 webapp.py --port 8090 --host 0.0.0.0 > data/webapp.log 2>&1 &
 - **pyfa 三栏界面**：左栏（船体与装配/装备/弹药 标签页 + 搜索 + 装配列表 + 装配舰船/另存为/浏览/上传），
   中央（舰船渲染图 + 高/中/低/改槽位 + 货舱/机库 + 模拟历史/保存状态），
   右栏（资源/抗性/火力/电容/目标/航行 标签页 + ISK 余额）
+- **左栏分组浏览**：舰船按 **舰种 → 种族** 两级展开（种族四大帝国固定在前，势力/昇威/三神裔等随后，
+  未标注 raceID 的归入「其他」），配种族筛选按钮；装备按 槽位、弹药按 家族 → 组 展开
+- **左栏点击语义**：点**舰船名** = 换用该船体并**清空全部槽位**（从零开始搭）；点其下的**装配方案**
+  （⚙ 本地 / 🌐 ESI）= 按该方案装填槽位
+- **三栏各自独立滚动**：页头固定，`main` 高度锁定为「视口 − 页头」（栅格行 `minmax(0,1fr)`），
+  左/中/右三栏分别 `overflow-y:auto`；滚任一侧栏都不会带动中间装配界面，也不会出现整页滚动条，
+  左栏底部（装配舰船/另存为/上传 EFT）常驻可见（窗口高度 320px 时同样成立）
 - **技能加成**：ESI `read_skills` 实时等级参与计算（两段式 dogma 引擎）
 - **存档**：本地（SQLite）+ 写回 EVE（需 `esi-fittings.write_fittings.v1`，需重新授权）
 - 物品详情：点击任意物品查看属性表/需求技能/舰船特性
@@ -51,7 +58,7 @@ nohup python3 webapp.py --port 8090 --host 0.0.0.0 > data/webapp.log 2>&1 &
 
 ```
 GET  /api/search?q=&cat=        物品搜索（6 舰船 /7 装备 /8 弹药）
-GET  /api/ships  /api/groups    舰船与分组
+GET  /api/ships  /api/groups    舰船列表（含 group/race）/ 舰船组
 GET  /api/item/<tid>            物品详情（属性/需求技能/特性）
 POST /api/simulate              模拟 {ship_tid, items:[[tid,qty]], skills}
 POST /api/eft/simulate          EFT 文本模拟
@@ -59,12 +66,21 @@ GET  /api/characters            已授权角色
 GET  /api/characters/<cid>/skills|wallet|fittings
 POST /api/characters/<cid>/fittings/save   写回 EVE
 GET/POST/DELETE /api/local/fittings        本地存档
-GET  /api/auth/start  →  EVE SSO → qq_auth_bot(8000) → /callback/
+GET  /api/auth/start  →  EVE SSO → nginx /api/auth/callback → /callback/
 ```
 
 ## OAuth 接线
 
-- EVE 注册回调为 `http://8.138.203.48:8000/callback/`（qq_auth_bot 8000）
-- `qq_auth_bot.py` 已加 `sim-` state 前缀转发 → `127.0.0.1:8090/callback/`（追加式改动）
+本应用使用**独立的 EVE 应用凭据**（项目根目录 `config.json`，已 gitignore），
+不再复用 qq_auth_bot 的 8000 应用：
+
+- EVE 应用登记的「回调地址(Callback URL)」须逐字符等于 `config.json` 里的 `callback_url`：
+  `http://8.138.203.48/api/auth/callback`
+  （两者不一致时 EVE 会报 `invalid redirect_uri`，授权直接失败）
+- nginx 负责把该公网地址反代到本应用（见 `/etc/nginx/sites-available/report` 的 80 端口 server）：
+  `location = /api/auth/callback → http://127.0.0.1:8090/callback/`
 - 授权范围：fittings 读/写、skills 读、wallet 读；「保存到 EVE」需含 write scope 的
   重新授权（EVE SSO 复用旧同意记录时需先在账号设置撤销本应用授权）
+- 环境变量可覆盖配置：`EVE_CLIENT_ID` / `EVE_CLIENT_SECRET` / `EVE_CALLBACK_URL`
+  （单字段覆盖，未设置的回退到 `config.json`）；`EVE_SKILL_PLANNER_URL` 覆盖授权成功后
+  回跳的前端基址（默认 `http://8.138.203.48:8090`）
