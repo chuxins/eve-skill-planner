@@ -19,7 +19,7 @@ createApp({ setup() {
  const modShip=ref(false), modEft=ref(false), modSave=ref(false);
  const expanded=reactive({});
 
- const hasSkills=computed(()=>Object.keys(sk.value).length>0);
+ const fittingsByShip=computed(()=>{ const m={}; fitList.value.forEach(f=>{ const s=f.ship||''; (m[s]=m[s]||[]).push(f); }); return m; });
  const res=computed(()=>sim.value?.resources||{});
  const slots=computed(()=>sim.value?.slots||{high:[],med:[],low:[],rig:[]});
  const cap=s=>sim.value?.resources?.slots_cap?.[s]||0;
@@ -74,6 +74,6 @@ createApp({ setup() {
   catch(e){alert('保存失败: '+e.message)}}
 
  return {lt,rt,ehp,shipTid,shipName,fitName,buildList:builds,sim,sq,sq2,iq,ships,iResults,chars,charId,sk,isk,fitList,eftText,saveName,modShip,modEft,modSave,expanded,
-  hasSkills,res,slots,cap,emp,pct,over,shipGroups,fShips,filterShips2,shipsByGroup,
+  hasSkills,res,slots,cap,emp,pct,over,shipGroups,fittingsByShip,fShips,filterShips2,shipsByGroup,
   onChar,authStart,pickShip,searchItems,addItem,rmItem,doSim,doEft,loadFit,saveLocal,saveEsi,icon,n,fmtT};
 }}).mount('#app');

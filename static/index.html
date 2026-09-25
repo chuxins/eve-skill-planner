@@ -80,15 +80,15 @@ th{color:var(--m);font-weight:400;background:var(--p2)} td:first-child,th:first-
       <span style="font-size:11px;width:12px;flex-shrink:0">{{expanded[g]?'▼':'▶'}}</span>
       {{g}} <span class="m" style="font-size:11px;font-weight:400;margin-left:auto">{{shipsByGroup(g).length}} 艘</span>
      </div>
-     <div v-show="expanded[g]" v-for="s in shipsByGroup(g)" :key="s.tid" class="item-row" :class="{sel:s.tid===shipTid}" @click="pickShip(s.tid)" style="padding-left:22px">{{s.name}}</div>
+     <template v-if="expanded[g]">
+      <div v-for="s in shipsByGroup(g)" :key="s.tid">
+       <div class="item-row" :class="{sel:s.tid===shipTid}" @click="pickShip(s.tid)" style="padding-left:22px">{{s.name}}</div>
+       <div v-for="f in (fittingsByShip[s.name]||[])" :key="f.k" class="item-row" @click="loadFit(f)" style="padding-left:38px;font-size:12px;color:var(--a)">⚙ {{f.name}}</div>
+      </div>
+     </template>
     </div>
    </div>
-   <div class="m" style="padding:6px;flex-shrink:0" v-else>匹配{{sq?'无结果':'输入搜索'}}</div>
-   <div style="margin:4px 0;flex-shrink:0"><b>本地装配</b></div>
-   <div class="slist">
-    <div v-for="f in fitList" :key="f.k" class="item-row" @click="loadFit(f)">{{f.name}} <span class="m">{{f.ship}}</span></div>
-    <div class="m" style="padding:6px" v-if="!fitList.length">暂无本地装配</div>
-   </div>
+   <div class="m" style="padding:6px" v-if="!fShips.length">匹配{{sq?'无结果':'输入搜索'}}</div>
   </template>
   <!-- 装备/弹药 -->
   <template v-else>
@@ -230,5 +230,5 @@ th{color:var(--m);font-weight:400;background:var(--p2)} td:first-child,th:first-
 </div>
 </div>
 <script src="/static/vendor/vue.global.prod.js"></script>
-<script src="/static/app.js?v=11"></script>
+<script src="/static/app.js?v=12"></script>
 </body></html>
