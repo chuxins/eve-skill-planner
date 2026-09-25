@@ -252,13 +252,13 @@ class Fit:
             sk = mod.skill_id
             if not sk:
                 return []
-            return [(self.mod_attrs[tid], tgt) for tid, _ in self.items
+            return [(self.mod_attrs[tid], tgt) for tid in {t for t,_ in self.items}
                     if self._requires_skill(tid, sk)]
         elif mod.func == "LocationGroupModifier":
             gid = mod.group_id
             if not gid:
                 return []
-            return [(self.mod_attrs[tid], tgt) for tid, _ in self.items
+            return [(self.mod_attrs[tid], tgt) for tid in {t for t,_ in self.items}
                     if self.sde.types.get(tid, {}).get("group_id") == gid]
         return []
 
