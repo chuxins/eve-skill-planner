@@ -56,11 +56,18 @@ createApp({ setup() {
  // 弹药右键菜单
  const chargeMenu=ref({show:false,x:0,y:0,weapon:null,charges:[]});
  function chargeMenuOpen(it,e){
-  if(!sim.value)return;
-  const w=(sim.value.firepower.weapons||[]).find(x=>x.tid===it.tid);
-  const wsize=it.attrs?.[128];
-  const charges=(sim.value.other.charge||[]).filter(c=>c.attrs?.[128]===wsize);
-  chargeMenu.value={show:true,x:e.clientX,y:e.clientY,weapon:it,charges,current:w?.charge}; }
+  e.preventDefault();
+  if(!sim.value) return;
+  chargeMenu.value.show=false; // trigger reactivity reset
+  let charges=[], current=null;
+  const wsize=it.attrs[128];
+  if(wsize){
+   charges=(sim.value.other.charge||[]).filter(c=>c.attrs[128]===wsize);
+   const w=(sim.value.firepower.weapons||[]).find(x=>x.tid===it.tid);
+   if(w) current=w.charge;
+  }
+  chargeMenu.value={show:true,x:e.clientX,y:e.clientY,weapon:it,charges,current};
+}
 function chargeMenuPick(c){ chargeMenu.value.show=false; }
 
  // 拖拽
