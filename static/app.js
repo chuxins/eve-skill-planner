@@ -4,7 +4,7 @@ const { createApp, ref, computed, watch, onMounted, reactive } = Vue;
 const API = (p, o) => fetch(p, o).then(async r => { const d = await r.json().catch(()=>({})); if(!r.ok) throw new Error(d.error||r.status); return d; });
 const icon = tid => `https://images.evetech.net/types/${tid}/icon?size=32`;
 
-function n(v){ if(v==null||isNaN(v)) return '—'; if(Math.abs(v)>=1e9) return (v/1e9).toFixed(2)+'B'; if(Math.abs(v)>=1e6) return (v/1e6).toFixed(1)+'M'; if(Math.abs(v)>=1e4) return (v/1e4).toFixed(1)+'万'; return String(Math.round(v*10)/10); }
+function n(v){ if(v==null||isNaN(v)) return '—'; let s=Math.ceil(v*10)/10; if(Math.abs(s)>=1e9) return (s/1e9).toFixed(2)+'B'; if(Math.abs(s)>=1e6) return (s/1e6).toFixed(1)+'M'; if(Math.abs(s)>=1e4) return (s/1e4).toFixed(1)+'万'; return String(Math.ceil(v*10)/10); }
 function fmtT(s){ if(!s||s<0) return '—'; return `${String(Math.floor(s/3600)|0).padStart(2,'0')}:${String((Math.floor(s/60)%60)|0).padStart(2,'0')}:${String(Math.floor(s%60)|0).padStart(2,'0')}`; }
 
 createApp({ setup() {
