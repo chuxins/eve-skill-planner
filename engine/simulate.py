@@ -378,9 +378,9 @@ class Fit:
         turret_used = sum(it["qty"] for it in turret_list)
         launcher_used = sum(it["qty"] for it in launcher_list)
 
-        cargo_used = sum(it["attrs"].get("volume", 0.0) * it["qty"]
+        cargo_used = sum(self.sde.types.get(it["tid"], {}).get("volume", 0.0) * it["qty"]
                          for it in other["charge"] + other["cargo"])
-        drone_used = sum(it["attrs"].get("volume", 0.0) * it["qty"]
+        drone_used = sum(self.sde.types.get(it["tid"], {}).get("volume", 0.0) * it["qty"]
                          for it in other["drone"])
         drone_bw_used = sum(it["attrs"].get(A_DRONE_BW, 0.0) for it in other["drone"])
 
@@ -442,7 +442,7 @@ class Fit:
                 "cpu": {"used": round(cpu_used, 1), "cap": round(get(A_CPU), 1)},
                 "turret": {"used": turret_used, "cap": int(get(A_TURRET_HP))},
                 "launcher": {"used": launcher_used, "cap": int(get(A_LAUNCHER_HP))},
-                "cargo": {"used": round(cargo_used, 1), "cap": round(get(A_CARGO), 1)},
+                "cargo": {"used": round(cargo_used, 1), "cap": round(self.ship.get("capacity", get(A_CARGO)), 1)},
                 "drone_bay": {"used": round(drone_used, 1),
                               "cap": round(get(A_DRONE_BAY), 1)},
                 "bandwidth": {"used": round(min(drone_bw_used, get(A_DRONE_BW)), 1),
