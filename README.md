@@ -6,8 +6,8 @@ pyfa 风格的单页 Web 装配模拟器，全离线 SDE 引擎（数值锚定 p
 
 ```bash
 cd /root/eve-skill-planner
-nohup python3 webapp.py --port 8090 > data/webapp.log 2>&1 &
-# 浏览器访问 http://8.138.203.48:8090/ （nginx 反代或 --host 0.0.0.0）
+nohup python3 webapp.py --port 8090 --host 0.0.0.0 > data/webapp.log 2>&1 &
+# 浏览器访问 http://8.138.203.48:8090/ （必须 --host 0.0.0.0，否则公网连不上 ERR_CONNECTION_RESET）
 ```
 
 前置数据（自动准备）：
