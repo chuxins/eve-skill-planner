@@ -37,7 +37,9 @@ _HIDDEN_ATTRS = set(range(182, 192)) | {277, 278, 279, 1286, 1287} | {280, 275, 
 # ---------------------------------------------------------------- 静态
 @app.route("/")
 def index():
-    return send_from_directory(config.STATIC_DIR, "index.html")
+    resp = send_from_directory(config.STATIC_DIR, "index.html")
+    resp.headers["Cache-Control"] = "no-cache"
+    return resp
 
 
 @app.route("/static/<path:name>")
