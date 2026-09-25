@@ -84,7 +84,7 @@ th{color:var(--m);font-weight:400;background:var(--p2)} td:first-child,th:first-
      <template v-if="expanded[g]">
       <div v-for="s in shipsByGroup(g)" :key="s.tid">
        <div class="item-row" :class="{sel:s.tid===shipTid}" @click="pickShip(s.tid)" style="padding-left:22px">{{s.name}}</div>
-       <div v-for="f in (fittingsByShip[s.name]||[])" :key="f.k" class="item-row" @click="loadFit(f)" style="padding-left:38px;font-size:12px;color:var(--a)">⚙ {{f.name}}</div>
+       <div v-for="f in (fittingsByShip[s.name]||[])" :key="f.k" class="item-row" @click="loadFit(f)" style="padding-left:38px;font-size:12px;color:var(--a)">{{f.esi?'🌐':'⚙'}} {{f.name}}</div>
       </div>
      </template>
     </template>
@@ -232,5 +232,5 @@ th{color:var(--m);font-weight:400;background:var(--p2)} td:first-child,th:first-
 </div>
 </div>
 <script src="/static/vendor/vue.global.prod.js"></script>
-<script src="/static/app.js?v=15"></script>
+<script src="/static/app.js?v=16"></script>
 </body></html>

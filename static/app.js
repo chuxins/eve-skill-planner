@@ -14,12 +14,14 @@ createApp({ setup() {
  const sq=ref(''), sq2=ref(''), iq=ref('');
  const ships=ref([]), iResults=ref([]);
  const chars=ref([]), charId=ref(null), sk=ref({}), isk=ref('—');
- const fitList=ref([]);
+ const fitList=ref([]), esiFits=ref({});
  const eftText=ref(''), saveName=ref('');
  const modShip=ref(false), modEft=ref(false), modSave=ref(false);
  const expanded=reactive({});
  const hasSkills=computed(()=>Object.keys(sk.value).length>0);
- const fittingsByShip=computed(()=>{ const m={}; fitList.value.forEach(f=>{ const s=f.ship||''; (m[s]=m[s]||[]).push(f); }); return m; });
+ const fittingsByShip=computed(()=>{ const m={}; fitList.value.forEach(f=>{ const s=f.ship||''; (m[s]=m[s]||[]).push(f); });
+  Object.values(esiFits.value).forEach(f=>{ const s=f.ship||''; (m[s]=m[s]||[]).push({k:'e'+f.fitting_id,name:f.name,ship:f.ship,esi:true,data:f}); });
+  return m; });
  const res=computed(()=>sim.value?.resources||{});
  const slots=computed(()=>sim.value?.slots||{high:[],med:[],low:[],rig:[]});
  const cap=s=>sim.value?.resources?.slots_cap?.[s]||0;
@@ -36,7 +38,7 @@ createApp({ setup() {
 
  // 角色
  async function loadChars(){ chars.value=await j('/api/characters'); if(chars.value.length&&!charId.value){ charId.value=chars.value[0].id; await onChar(); } }
- async function onChar(){ sk.value={}; isk.value='—'; if(!charId.value)return; try{sk.value=await j(`/api/characters/${charId.value}/skills`)}catch(e){} try{isk.value=n(await j(`/api/characters/${charId.value}/wallet`).then(d=>d.balance))}catch(e){} if(sim.value)doSim(); }
+ async function onChar(){ sk.value={}; isk.value='—'; esiFits.value={}; if(!charId.value)return; try{sk.value=await j(`/api/characters/${charId.value}/skills`)}catch(e){} try{isk.value=n(await j(`/api/characters/${charId.value}/wallet`).then(d=>d.balance))}catch(e){} try{const f=await j(`/api/characters/${charId.value}/fittings`); const m={}; f.forEach(x=>{m[x.fitting_id]=x}); esiFits.value=m;}catch(e){} if(sim.value)doSim(); }
  function authStart(){ location.href='/api/auth/start?target=fitting'; }
 
  // 舰船
@@ -59,8 +61,15 @@ createApp({ setup() {
   builds.value=r.items.map(it=>({tid:it.tid,name:it.name,qty:it.qty}));
  }catch(e){alert(e.message)} eftText.value=''; }
 
- // 本地装配
- async function loadFit(f){ eftText.value=f.data; await doEft(); }
+ // 装配
+ async function loadFit(f){
+  if(f.esi){ shipTid.value=f.data.ship_tid; shipName.value=f.data.ship; fitName.value=f.data.name;
+   builds.value=[]; doSimFor(f.data.items.map(it=>[it.tid,it.qty])); return; }
+  eftText.value=f.data; await doEft(); }
+ async function doSimFor(items){ try{
+  sim.value=await j('/api/simulate',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({ship_tid:shipTid.value,items,skills:sk.value})});
+  builds.value=sim.value.items.map(it=>({tid:it.tid,name:it.name,qty:it.qty}));
+ }catch(e){alert(e.message)}}
 
  // 保存
  function eftOut(){ if(!sim.value)return''; const lines=sim.value.items.map(it=>it.qty>1?`${it.name} x${it.qty}`:it.name); return `[${sim.value.ship.name}, ${fitName.value||'未命名'}]\n${lines.join('\n')}`; }
@@ -73,7 +82,7 @@ createApp({ setup() {
   try{await j(`/api/characters/${charId.value}/fittings/save`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({name:saveName.value.trim()||'模拟装配',items,ship_tid:sim.value.ship.tid})}); modSave.value=false; alert('已保存');}
   catch(e){alert('保存失败: '+e.message)}}
 
- return {lt,rt,ehp,shipTid,shipName,fitName,buildList:builds,sim,sq,sq2,iq,ships,iResults,chars,charId,sk,isk,fitList,eftText,saveName,modShip,modEft,modSave,expanded,
+ return {lt,rt,ehp,shipTid,shipName,fitName,buildList:builds,sim,sq,sq2,iq,ships,iResults,chars,charId,sk,isk,fitList,esiFits,eftText,saveName,modShip,modEft,modSave,expanded,
   hasSkills,res,slots,cap,emp,pct,over,shipGroups,fittingsByShip,fShips,filterShips2,shipsByGroup,
   onChar,authStart,pickShip,searchItems,addItem,rmItem,doSim,doEft,loadFit,saveLocal,saveEsi,icon,n,fmtT};
 }}).mount('#app');
