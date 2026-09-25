@@ -16,7 +16,7 @@ createApp({ setup() {
  const builds=ref([]), sim=ref(null);
  const sq=ref(''), sq2=ref(''), iq=ref('');
  const ships=ref([]), iResults=ref([]);
- const chars=ref([]), charId=ref(null), charName=ref(''), sk=ref({}), isk=ref('—');
+ const chars=ref(cacheGet('chars',6e5)||[]), charId=ref(cacheGet('cid',864e5)||null), charName=ref(cacheGet('cname',864e5)||''), sk=ref({}), isk=ref(cacheGet('isk_'+String(cacheGet('cid',864e5)||0),6e4)||'—');
  const fitList=ref([]), esiFits=ref({});
  const eftText=ref(''), saveName=ref('');
  const modShip=ref(false), modEft=ref(false), modSave=ref(false);
