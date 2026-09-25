@@ -212,21 +212,21 @@ th{color:var(--m);font-weight:400;background:var(--p2)} td:first-child,th:first-
 </main>
 
 <!-- ===== 模态 ===== -->
-<div class="modal-mask" v-if="modShip" @click="modShip=false">
- <div class="modal" @click.stop><h3>选择舰船</h3><input v-model="sq2" placeholder="搜索…" style="width:100%"><div style="max-height:300px;overflow-y:auto;margin-top:6px">
+<div class="modal-mask" v-if="modShip">
+ <div class="modal"><h3>选择舰船</h3><input v-model="sq2" placeholder="搜索…" style="width:100%"><div style="max-height:300px;overflow-y:auto;margin-top:6px">
   <div v-for="s in filterShips2" :key="s.tid" class="item-row" @click="pickShip(s.tid);modShip=false"><img :src="icon(s.tid)">{{s.name}} <span class="m">{{s.group}}</span></div></div>
   <div class="act"><button @click="modShip=false">取消</button></div></div>
 </div>
-<div class="modal-mask" v-if="modEft" @click="modEft=false">
- <div class="modal" @click.stop><h3>粘贴 EFT</h3><textarea v-model="eftText" placeholder="[审判者级, 装配名]&#10;小型聚焦脉冲激光器 II x4&#10;…"></textarea>
+<div class="modal-mask" v-if="modEft">
+ <div class="modal"><h3>粘贴 EFT</h3><textarea v-model="eftText" placeholder="[审判者级, 装配名]&#10;小型聚焦脉冲激光器 II x4&#10;…"></textarea>
   <div class="act"><button @click="modEft=false">取消</button><button class="prim" @click="doEft">解析并模拟</button></div></div>
 </div>
-<div class="modal-mask" v-if="modSave" @click="modSave=false">
- <div class="modal" @click.stop><h3>另存为</h3><input v-model="saveName" placeholder="装配名" style="width:100%">
+<div class="modal-mask" v-if="modSave">
+ <div class="modal"><h3>另存为</h3><input v-model="saveName" placeholder="装配名" style="width:100%">
   <div class="act"><button @click="modSave=false">取消</button><button @click="saveLocal">本地</button><button class="prim" :disabled="!charId" @click="saveEsi">EVE</button></div>
   <div class="m" style="margin-top:6px" v-if="!charId">保存到 EVE 需选择角色并授权 write scope</div></div>
 </div>
 </div>
 <script src="vendor/vue.global.prod.js"></script>
-<script src="app.js?v=5"></script>
+<script src="app.js?v=6"></script>
 </body></html>
