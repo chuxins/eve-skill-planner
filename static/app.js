@@ -58,11 +58,12 @@ createApp({ setup() {
  function chargeMenuOpen(it,e){
   e.preventDefault();
   if(!sim.value) return;
-  chargeMenu.value.show=false; // trigger reactivity reset
+  chargeMenu.value.show=false;
   let charges=[], current=null;
   const wsize=it.attrs[128];
   if(wsize){
-   charges=(sim.value.other.charge||[]).filter(c=>c.attrs[128]===wsize);
+   charges=(sim.value.other.charge||[]).filter(c=>
+    c.attrs[128]===wsize && (c.attrs[114]||c.attrs[116]||c.attrs[117]||c.attrs[118]));
    const w=(sim.value.firepower.weapons||[]).find(x=>x.tid===it.tid);
    if(w) current=w.charge;
   }
