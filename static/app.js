@@ -4,6 +4,9 @@ const { createApp, ref, computed, watch, onMounted, reactive } = Vue;
 const API = (p, o) => fetch(p, o).then(async r => { const d = await r.json().catch(()=>({})); if(!r.ok) throw new Error(d.error||r.status); return d; });
 const icon = tid => `https://images.evetech.net/types/${tid}/icon?size=32`;
 
+function cacheGet(k,ttl){ try{ const v=JSON.parse(localStorage.getItem('spl_'+k)); return v&&Date.now()-v.ts<ttl?v.data:null; }catch(e){return null} }
+function cacheSet(k,d){ try{ localStorage.setItem('spl_'+k, JSON.stringify({ts:Date.now(),data:d})); }catch(e){} }
+
 function n(v){ if(v==null||isNaN(v)) return '—'; let s=Math.ceil(v*10)/10; if(Math.abs(s)>=1e9) return (s/1e9).toFixed(2)+'B'; if(Math.abs(s)>=1e6) return (s/1e6).toFixed(1)+'M'; if(Math.abs(s)>=1e4) return (s/1e4).toFixed(1)+'万'; return String(Math.ceil(v*10)/10); }
 function fmtT(s){ if(!s||s<0) return '—'; return `${String(Math.floor(s/3600)|0).padStart(2,'0')}:${String((Math.floor(s/60)%60)|0).padStart(2,'0')}:${String(Math.floor(s%60)|0).padStart(2,'0')}`; }
 
@@ -37,8 +40,14 @@ createApp({ setup() {
  async function j(p,o){ return API(p,o); }
 
  // 角色
- async function loadChars(){ chars.value=await j('/api/characters'); if(chars.value.length&&!charId.value){ charId.value=chars.value[0].id; await onChar(); } }
- async function onChar(){ sk.value={}; isk.value='—'; esiFits.value={}; if(!charId.value)return; try{sk.value=await j(`/api/characters/${charId.value}/skills`)}catch(e){} try{isk.value=n(await j(`/api/characters/${charId.value}/wallet`).then(d=>d.balance))}catch(e){} try{const f=await j(`/api/characters/${charId.value}/fittings`); const m={}; f.forEach(x=>{m[x.fitting_id]=x}); esiFits.value=m;}catch(e){} if(sim.value)doSim(); }
+ async function loadChars(){ chars.value=cacheGet('chars',6e5)||[]; try{chars.value=await j('/api/characters'); cacheSet('chars',chars.value)}catch(e){} if(!charId.value){ const saved=cacheGet('cid',864e5); charId.value=saved||(chars.value[0]?.id||null); } if(charId.value) await onChar(); }
+ async function onChar(){ sk.value={}; isk.value='—'; esiFits.value={}; if(!charId.value)return; cacheSet('cid',charId.value);
+  const cid=String(charId.value);
+  const cached_sk=cacheGet('sk_'+cid,3e5); const cached_fits=cacheGet('fits_'+cid,3e5); const cached_isk=cacheGet('isk_'+cid,6e4);
+  if(cached_sk){ sk.value=cached_sk; }else{ try{sk.value=await j(`/api/characters/${charId.value}/skills`); cacheSet('sk_'+cid,sk.value)}catch(e){} }
+  if(cached_fits){ const m={}; cached_fits.forEach(x=>m[x.fitting_id]=x); esiFits.value=m; }else{ try{const f=await j(`/api/characters/${charId.value}/fittings`); const m={}; f.forEach(x=>m[x.fitting_id]=x); esiFits.value=m; cacheSet('fits_'+cid,f)}catch(e){} }
+  if(cached_isk!=null){ isk.value=cached_isk; }else{ try{isk.value=n(await j(`/api/characters/${charId.value}/wallet`).then(d=>d.balance)); cacheSet('isk_'+cid,isk.value)}catch(e){} }
+  if(sim.value)doSim(); }
  function authStart(){ location.href='/api/auth/start?target=fitting'; }
 
  // 舰船
