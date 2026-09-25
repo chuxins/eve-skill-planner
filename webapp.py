@@ -42,7 +42,9 @@ def index():
 
 @app.route("/static/<path:name>")
 def static_files(name):
-    return send_from_directory(config.STATIC_DIR, name)
+    resp = send_from_directory(config.STATIC_DIR, name)
+    resp.headers["Cache-Control"] = "no-cache"
+    return resp
 
 
 # ---------------------------------------------------------------- 搜索

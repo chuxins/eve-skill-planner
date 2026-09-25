@@ -256,6 +256,7 @@ createApp({
       localStorage.setItem('sim_history', JSON.stringify(this.history));
     },
     showHistory() { this.openHistory = true; },
+    closeHistory() { this.openHistory = false; },
     restoreHistory(h) {
       if (!h || !Array.isArray(h.items)) return;
       this.shipTid = h.ship_tid;
