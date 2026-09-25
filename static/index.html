@@ -26,7 +26,7 @@ main{display:grid;grid-template-columns:300px 1fr 296px;min-height:calc(100vh - 
 .item-row{cursor:pointer;padding:3px 6px}
 .item-row:hover{background:var(--p2)} .item-row.sel{background:#243651}
 .item-row img{width:24px;height:24px;border-radius:3px}
-.slist{border:1px solid var(--b);border-radius:4px;max-height:200px;overflow-y:auto}
+.slist{border:1px solid var(--b);border-radius:4px;overflow-y:auto;flex:1;min-height:0}
 .slot{margin-bottom:8px}
 .slot h4{padding:3px 8px;border-radius:4px;font-size:12px;margin-bottom:2px;font-weight:400}
 .high h4{background:#3a2428}.med h4{background:#1e2b3a}.low h4{background:#2b2415}.rig h4{background:#1d2b1d}
@@ -73,18 +73,17 @@ th{color:var(--m);font-weight:400;background:var(--p2)} td:first-child,th:first-
  <div class="pad">
   <!-- 船体 -->
   <template v-if="lt==='hull'">
-   <input v-model="sq" placeholder="搜舰船…" style="width:100%;margin-bottom:6px">
+   <input v-model="sq" placeholder="搜舰船…" style="width:100%;margin-bottom:4px;flex-shrink:0">
    <div class="slist" v-if="fShips.length">
     <div v-for="g in shipGroups" :key="g"><div class="m" style="padding:2px 6px;font-size:11px">{{g}}</div>
      <div v-for="s in shipsByGroup(g)" :key="s.tid" class="item-row" :class="{sel:s.tid===shipTid}" @click="pickShip(s.tid)">{{s.name}}</div>
     </div>
    </div>
-   <div class="m" style="padding:6px" v-else>匹配{{sq?'无结果':'输入搜索'}}</div>
-   <div style="margin:6px 0"><b>装配列表</b> <button class="sm" @click="loadFits">读取</button></div>
+   <div class="m" style="padding:6px;flex-shrink:0" v-else>匹配{{sq?'无结果':'输入搜索'}}</div>
+   <div style="margin:4px 0;flex-shrink:0"><b>本地装配</b></div>
    <div class="slist">
     <div v-for="f in fitList" :key="f.k" class="item-row" @click="loadFit(f)">{{f.name}} <span class="m">{{f.ship}}</span></div>
-    <div class="m" style="padding:6px" v-if="!fitList.length&&!loadingFits">（点击"读取"加载角色/本地装配）</div>
-    <div class="m" style="padding:6px" v-if="loadingFits">读取中…</div>
+    <div class="m" style="padding:6px" v-if="!fitList.length">暂无本地装配</div>
    </div>
   </template>
   <!-- 装备/弹药 -->
@@ -103,7 +102,6 @@ th{color:var(--m);font-weight:400;background:var(--p2)} td:first-child,th:first-
  <div style="display:flex;gap:6px;padding:8px;border-top:1px solid var(--b);flex-wrap:wrap">
   <button @click="modShip=true">装配舰船…</button>
   <button @click="saveName='';modSave=true">另存为…</button>
-  <button v-if="lt!=='hull'" @click="lt='hull';loadFits()">浏览</button>
   <button @click="eftText='';modEft=true">上传 EFT</button>
  </div>
 </section>
@@ -228,5 +226,5 @@ th{color:var(--m);font-weight:400;background:var(--p2)} td:first-child,th:first-
 </div>
 </div>
 <script src="/static/vendor/vue.global.prod.js"></script>
-<script src="/static/app.js?v=9"></script>
+<script src="/static/app.js?v=10"></script>
 </body></html>

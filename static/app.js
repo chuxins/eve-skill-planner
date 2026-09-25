@@ -14,9 +14,9 @@ createApp({ setup() {
  const sq=ref(''), sq2=ref(''), iq=ref('');
  const ships=ref([]), iResults=ref([]);
  const chars=ref([]), charId=ref(null), sk=ref({}), isk=ref('—');
- const fitList=ref([]), loadingFits=ref(false);
+ const fitList=ref([]);
  const eftText=ref(''), saveName=ref('');
- const modShip=ref(false), modEft=ref(false), modSave=ref(false), fitCache=ref({});
+ const modShip=ref(false), modEft=ref(false), modSave=ref(false);
 
  const hasSkills=computed(()=>Object.keys(sk.value).length>0);
  const res=computed(()=>sim.value?.resources||{});
@@ -39,7 +39,7 @@ createApp({ setup() {
  function authStart(){ location.href='/api/auth/start?target=fitting'; }
 
  // 舰船
- onMounted(async()=>{ ships.value=await j('/api/ships'); loadChars(); });
+ onMounted(async()=>{ ships.value=await j('/api/ships'); loadChars(); try{const l=await j('/api/local/fittings');fitList.value=l.map(f=>({k:'l'+f.id,name:f.name,ship:f.ship_name,data:f.eft}));}catch(e){} });
  function pickShip(tid){ shipTid.value=tid; const s=ships.value.find(x=>x.tid===tid); shipName.value=s?s.name:''; fitName.value=''; doSim(); }
 
  // 搜索
@@ -58,20 +58,8 @@ createApp({ setup() {
   builds.value=r.items.map(it=>({tid:it.tid,name:it.name,qty:it.qty}));
  }catch(e){alert(e.message)} eftText.value=''; }
 
- // 装配列表
- async function loadFits(){ loadingFits.value=true; fitList.value=[];
-  try{const l=await j('/api/local/fittings'); l.forEach(f=>fitList.value.push({k:'l'+f.id,name:f.name,ship:f.ship_name,kind:'local',data:f.eft}));}catch(e){}
-  if(charId.value){try{const f=await j(`/api/characters/${charId.value}/fittings`); f.forEach(x=>{fitCache.value[x.fitting_id]=x;fitList.value.push({k:'c'+x.fitting_id,name:x.name,ship:x.ship,kind:'char',data:x.fitting_id});})}catch(e){}}
-  loadingFits.value=false; }
- async function loadFit(f){
-  if(f.kind==='local'){eftText.value=f.data; await doEft(); return;}
-  const x=fitCache.value[f.data]; if(!x)return;
-  shipTid.value=x.ship_tid; shipName.value=x.ship; fitName.value=x.name;
-  await doSimFor(x.items.map(it=>[it.tid,it.qty])); }
- async function doSimFor(items){ try{
-  sim.value=await j('/api/simulate',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({ship_tid:shipTid.value,items,skills:sk.value})});
-  builds.value=sim.value.items.map(it=>({tid:it.tid,name:it.name,qty:it.qty}));
- }catch(e){alert(e.message)}}
+ // 本地装配
+ async function loadFit(f){ eftText.value=f.data; await doEft(); }
 
  // 保存
  function eftOut(){ if(!sim.value)return''; const lines=sim.value.items.map(it=>it.qty>1?`${it.name} x${it.qty}`:it.name); return `[${sim.value.ship.name}, ${fitName.value||'未命名'}]\n${lines.join('\n')}`; }
@@ -84,7 +72,7 @@ createApp({ setup() {
   try{await j(`/api/characters/${charId.value}/fittings/save`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({name:saveName.value.trim()||'模拟装配',items,ship_tid:sim.value.ship.tid})}); modSave.value=false; alert('已保存');}
   catch(e){alert('保存失败: '+e.message)}}
 
- return {lt,rt,ehp,shipTid,shipName,fitName,buildList:builds,sim,sq,sq2,iq,ships,iResults,chars,charId,sk,isk,fitList,loadingFits,eftText,saveName,modShip,modEft,modSave,fitCache,
+ return {lt,rt,ehp,shipTid,shipName,fitName,buildList:builds,sim,sq,sq2,iq,ships,iResults,chars,charId,sk,isk,fitList,eftText,saveName,modShip,modEft,modSave,
   hasSkills,res,slots,cap,emp,pct,over,shipGroups,fShips,filterShips2,shipsByGroup,
-  onChar,authStart,pickShip,searchItems,addItem,rmItem,doSim,doEft,loadFits,loadFit,saveLocal,saveEsi,icon,n,fmtT};
+  onChar,authStart,pickShip,searchItems,addItem,rmItem,doSim,doEft,loadFit,saveLocal,saveEsi,icon,n,fmtT};
 }}).mount('#app');
