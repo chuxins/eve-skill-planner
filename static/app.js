@@ -21,6 +21,8 @@ createApp({ setup() {
  const eftText=ref(''), saveName=ref('');
  const modShip=ref(false), modEft=ref(false), modSave=ref(false);
  const expanded=reactive({});
+ const leftW=ref(parseInt(localStorage.getItem('spl_lw'))||360), rightW=ref(parseInt(localStorage.getItem('spl_rw'))||355);
+ const dragL=ref(false), dragR=ref(false); let dragSide=null, dragX=0, dragW0=0;
  const hasSkills=computed(()=>Object.keys(sk.value).length>0);
  const fittingsByShip=computed(()=>{ const m={}; fitList.value.forEach(f=>{ const s=f.ship||''; (m[s]=m[s]||[]).push(f); });
   Object.values(esiFits.value).forEach(f=>{ const s=f.ship||''; (m[s]=m[s]||[]).push({k:'e'+f.fitting_id,name:f.name,ship:f.ship,esi:true,data:f}); });
@@ -50,6 +52,14 @@ createApp({ setup() {
   if(cached_isk!=null){ isk.value=cached_isk; }else{ try{isk.value=n(await j(`/api/characters/${charId.value}/wallet`).then(d=>d.balance)); cacheSet('isk_'+cid,isk.value)}catch(e){} }
   if(sim.value)doSim(); }
  function authStart(){ location.href='/api/auth/start?target=fitting'; }
+
+ // 拖拽
+ function dragStart(s,e){ dragSide=s; dragX=e.clientX; dragW0=s==='l'?leftW.value:rightW.value; if(s==='l')dragL.value=true; else dragR.value=true;
+  document.addEventListener('mousemove',dragMove); document.addEventListener('mouseup',dragEnd); }
+ function dragMove(e){ if(!dragSide)return; const d=e.clientX-dragX; const w=Math.max(200,Math.min(600,dragW0+(dragSide==='l'?d:-d)));
+  if(dragSide==='l')leftW.value=w; else rightW.value=w; }
+ function dragEnd(){ dragL.value=dragR.value=false; dragSide=null; localStorage.setItem('spl_lw',leftW.value); localStorage.setItem('spl_rw',rightW.value);
+  document.removeEventListener('mousemove',dragMove); document.removeEventListener('mouseup',dragEnd); }
 
  // 舰船
  onMounted(async()=>{ ships.value=await j('/api/ships'); loadChars(); try{const l=await j('/api/local/fittings');fitList.value=l.map(f=>({k:'l'+f.id,name:f.name,ship:f.ship_name,data:f.eft}));}catch(e){} });
@@ -92,7 +102,7 @@ createApp({ setup() {
   try{await j(`/api/characters/${charId.value}/fittings/save`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({name:saveName.value.trim()||'模拟装配',items,ship_tid:sim.value.ship.tid})}); modSave.value=false; alert('已保存');}
   catch(e){alert('保存失败: '+e.message)}}
 
- return {lt,rt,ehp,shipTid,shipName,fitName,buildList:builds,sim,sq,sq2,iq,ships,iResults,chars,charId,charName,sk,isk,fitList,esiFits,eftText,saveName,modShip,modEft,modSave,expanded,
+ return {lt,rt,ehp,shipTid,shipName,fitName,buildList:builds,sim,sq,sq2,iq,ships,iResults,chars,charId,charName,sk,isk,fitList,esiFits,eftText,saveName,modShip,modEft,modSave,expanded,leftW,rightW,dragL,dragR,
   hasSkills,res,slots,cap,emp,pct,over,shipGroups,fittingsByShip,fShips,filterShips2,shipsByGroup,
-  onChar,authStart,pickShip,searchItems,addItem,rmItem,doSim,doEft,loadFit,saveLocal,saveEsi,icon,n,fmtT};
+  onChar,authStart,dragStart,pickShip,searchItems,addItem,rmItem,doSim,doEft,loadFit,saveLocal,saveEsi,icon,n,fmtT};
 }}).mount('#app');

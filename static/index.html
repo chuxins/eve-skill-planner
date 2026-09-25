@@ -15,10 +15,12 @@ button:hover{border-color:var(--a)} button.prim{background:#2b4a7a;border-color:
 input:focus,textarea:focus,select:focus{outline:none;border-color:var(--a)}
 a{color:var(--a);cursor:pointer}.m{color:var(--m)}.r{color:var(--r)}.g{color:var(--g)}
 header{display:flex;align-items:center;gap:14px;padding:7px 16px;border-bottom:1px solid var(--b);background:var(--p);font-size:15.6px}
-main{display:grid;grid-template-columns:360px 1fr 355px;min-height:calc(100vh - 49px)}
+main{display:grid;min-height:calc(100vh - 49px);position:relative}
+.drag{width:5px;cursor:col-resize;background:var(--b);z-index:5;transition:background .15s}
+.drag:hover,.drag.active{background:var(--a)}
 .l,.r{background:var(--p);overflow-y:auto}
-.l{border-right:1px solid var(--b);display:flex;flex-direction:column}
-.c{overflow-y:auto;padding:14px;border-right:1px solid var(--b)}
+.l{display:flex;flex-direction:column}
+.c{overflow-y:auto;padding:14px}
 .tabs{display:flex;border-bottom:1px solid var(--b)} .tabs button{flex:1;border:none;border-radius:0;background:transparent;padding:8px 0}
 .tabs button.on{color:#fff;border-bottom:2px solid var(--a)}
 .pad{padding:10px;flex:1;overflow-y:auto}
@@ -62,7 +64,7 @@ th{color:var(--m);font-weight:400;background:var(--p2)} td:first-child,th:first-
  <span class="chip" v-if="charId">ISK {{isk}}</span>
  <span class="chip m" v-if="charId&&!hasSkills">无技能scope</span>
 </header>
-<main>
+<main :style="'grid-template-columns:'+leftW+'px 5px 1fr 5px '+rightW+'px'">
 <!-- ===== 左栏 ===== -->
 <section class="l">
  <nav class="tabs">
@@ -116,6 +118,7 @@ th{color:var(--m);font-weight:400;background:var(--p2)} td:first-child,th:first-
   <button @click="eftText='';modEft=true">上传 EFT</button>
  </div>
 </section>
+<div class="drag" :class="{active:dragL}" @mousedown="dragStart('l',$event)"></div>
 <!-- ===== 中央 ===== -->
 <section class="c">
  <div style="display:flex;justify-content:space-between;margin-bottom:6px"><b>{{shipName}}</b> <span class="m" v-if="fitName">· {{fitName}}</span></div>
@@ -152,6 +155,7 @@ th{color:var(--m);font-weight:400;background:var(--p2)} td:first-child,th:first-
   </div>
  </template>
 </section>
+<div class="drag" :class="{active:dragR}" @mousedown="dragStart('r',$event)"></div>
 <!-- ===== 右栏 ===== -->
 <aside class="r">
  <nav class="rtabs">
@@ -237,5 +241,5 @@ th{color:var(--m);font-weight:400;background:var(--p2)} td:first-child,th:first-
 </div>
 </div>
 <script src="/static/vendor/vue.global.prod.js"></script>
-<script src="/static/app.js?v=24"></script>
+<script src="/static/app.js?v=25"></script>
 </body></html>
