@@ -96,11 +96,16 @@ th{color:var(--m);font-weight:400;background:var(--p2)} td:first-child,th:first-
   <template v-else>
    <div class="row" style="margin-bottom:4px"><input v-model="iq" placeholder="搜索…" style="flex:1" @keyup.enter="searchItems"><button @click="searchItems">搜</button></div>
    <div style="max-height:180px;overflow-y:auto;margin-bottom:8px">
-    <div v-for="r in iResults" :key="r.tid" class="item-row" @click="addItem(r)"><img :src="icon(r.tid)">{{r.name}} <span class="m">{{r.group}}</span></div>
+    <div v-for="r in iResults" :key="r.tid" class="item-row" @click="addItem(r)">
+     <img :src="icon(r.tid)">{{r.name}} <span class="m">{{r.group}}</span>
+     <span style="margin-left:auto;font-size:11px;color:var(--m)">{{r.pg!=null?'PG '+r.pg:''}} {{r.cpu!=null?'CPU '+r.cpu:''}}</span></div>
     <div class="m" style="padding:4px" v-if="!iResults.length&&iq">无结果</div>
    </div>
    <div><b>装配单</b> <button class="sm" @click="buildList=[];doSim()">清空</button></div>
-   <div v-for="(it,i) in buildList" :key="i" class="row"><img :src="icon(it.tid)" style="width:22px;height:22px">{{it.name}} <input class="qty" v-model.number="it.qty" @change="doSim"><button class="sm" @click="buildList.splice(i,1);doSim()">✕</button></div>
+   <div v-for="(it,i) in buildList" :key="i" class="row">
+   <img :src="icon(it.tid)" style="width:22px;height:22px">{{it.name}}
+   <span style="font-size:11px;color:var(--m);white-space:nowrap">{{it.pg!=null?'PG '+it.pg:''}} {{it.cpu!=null?'CPU '+it.cpu:''}}</span>
+   <input class="qty" v-model.number="it.qty" @change="doSim"><button class="sm" @click="buildList.splice(i,1);doSim()">✕</button></div>
    <div class="m" style="padding:4px" v-if="!buildList.length">未添加</div>
    <button class="prim" style="width:100%;margin-top:6px" @click="doSim">模拟</button>
   </template>
@@ -232,5 +237,5 @@ th{color:var(--m);font-weight:400;background:var(--p2)} td:first-child,th:first-
 </div>
 </div>
 <script src="/static/vendor/vue.global.prod.js"></script>
-<script src="/static/app.js?v=16"></script>
+<script src="/static/app.js?v=17"></script>
 </body></html>

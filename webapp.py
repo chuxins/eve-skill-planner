@@ -61,9 +61,11 @@ def _search_types(q, cats=None, limit=50):
         name = t["name"].lower()
         en = t["name_en"].lower()
         if q in name or (q in en and (q.isascii() or len(q) >= 3)):
+            attrs = sde.type_attrs.get(tid, {})
             out.append({"tid": tid, "name": t["name"], "name_en": t["name_en"],
                         "group_id": t["group_id"], "category_id": t["category_id"],
-                        "group": sde.group_name(t["group_id"])})
+                        "group": sde.group_name(t["group_id"]),
+                        "pg": attrs.get(30), "cpu": attrs.get(50)})
             if len(out) >= limit:
                 break
     return out

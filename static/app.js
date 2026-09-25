@@ -47,7 +47,7 @@ createApp({ setup() {
 
  // 搜索
  async function searchItems(){ const q=iq.value.trim(); if(!q)return; const cat=lt.value==='mod'?7:8; iResults.value=await j(`/api/search?q=${encodeURIComponent(q)}&cat=${cat}`); }
- function addItem(r){ const hit=builds.value.find(b=>b.tid===r.tid); if(hit)hit.qty++; else builds.value.push({tid:r.tid,name:r.name,qty:1}); doSim(); }
+ function addItem(r){ const hit=builds.value.find(b=>b.tid===r.tid); if(hit)hit.qty++; else builds.value.push({tid:r.tid,name:r.name,qty:1,pg:r.pg,cpu:r.cpu}); doSim(); }
  function rmItem(it){ builds.value=builds.value.filter(b=>!(b.tid===it.tid&&b.qty===it.qty)); doSim(); }
 
  // 模拟
