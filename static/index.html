@@ -1,0 +1,423 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>模拟装配 · eve-skill-planner</title>
+<style>
+:root{
+  --bg:#14161a; --panel:#1c1f26; --panel2:#22262f; --border:#2e333d;
+  --text:#cfd4dc; --muted:#8b93a1; --accent:#7aa2ff; --red:#ff6b6b;
+  --green:#5fe08b; --yellow:#e8c06a;
+  --high:#3a2428; --med:#1e2b3a; --low:#2b2415; --rig:#1d2b1d; --sub:#22222e;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+body{background:var(--bg);color:var(--text);font:13px/1.5 "Microsoft YaHei","PingFang SC",sans-serif}
+button{background:var(--panel2);color:var(--text);border:1px solid var(--border);border-radius:4px;
+  padding:4px 10px;cursor:pointer;font-size:12px}
+button:hover{border-color:var(--accent);color:#fff}
+button.primary{background:#2b4a7a;border-color:#3a5f9e}
+input,select,textarea{background:#171a20;border:1px solid var(--border);color:var(--text);
+  border-radius:4px;padding:5px 8px;font-size:12px}
+input:focus,textarea:focus,select:focus{outline:none;border-color:var(--accent)}
+a{color:var(--accent);cursor:pointer;text-decoration:none}
+.muted{color:var(--muted)} .red{color:var(--red)} .green{color:var(--green)}
+header{display:flex;align-items:center;gap:14px;padding:8px 16px;border-bottom:1px solid var(--border);
+  background:var(--panel)}
+header h1{font-size:15px;font-weight:600}
+header .spacer{flex:1}
+.topbar{display:flex;gap:8px;align-items:center}
+main{display:grid;grid-template-columns:322px 1fr 300px;gap:0;min-height:calc(100vh - 45px)}
+.left{border-right:1px solid var(--border);background:var(--panel);display:flex;flex-direction:column;overflow:hidden}
+.center{border-right:1px solid var(--border);overflow-y:auto;padding:12px}
+.right{overflow-y:auto;background:var(--panel)}
+.tabs{display:flex;border-bottom:1px solid var(--border)}
+.tabs button{flex:1;border:none;border-radius:0;background:transparent;padding:8px 0;font-size:13px}
+.tabs button.active{color:#fff;border-bottom:2px solid var(--accent)}
+.left .body{padding:8px;overflow-y:auto;flex:1}
+.searchbar{display:flex;gap:6px;margin-bottom:8px}
+.searchbar input{flex:1}
+.ship-tree{overflow-y:auto;max-height:200px;border:1px solid var(--border);border-radius:4px;padding:4px;margin-bottom:8px}
+.fit-list{overflow-y:auto;max-height:170px;border:1px solid var(--border);border-radius:4px}
+.fit-list .fit{padding:3px 6px;cursor:pointer;display:flex;justify-content:space-between;gap:8px}
+.fit-list .fit:hover{background:var(--panel2)}
+.fit.active{background:#243i6;background:#243651;color:#fff}
+.left .actions{display:flex;gap:6px;padding:8px;border-top:1px solid var(--border);flex-wrap:wrap}
+.build-list .row{display:flex;align-items:center;gap:6px;padding:3px 0;border-bottom:1px dashed var(--border)}
+.build-list img{width:24px;height:24px;border-radius:3px}
+.slot-group{margin-bottom:10px}
+.slot-group h3{font-size:12px;color:var(--muted);padding:3px 8px;border-radius:4px;margin-bottom:4px}
+.high h3{background:var(--high)} .med h3{background:var(--med)} .low h3{background:var(--low)}
+.rig h3{background:var(--rig)} .sub h3{background:var(--sub)}
+.slot-row{display:flex;align-items:center;gap:8px;padding:3px 6px;border:1px solid var(--border);
+  border-radius:4px;margin-bottom:3px;cursor:pointer;background:var(--panel2)}
+.slot-row:hover{border-color:var(--accent)}
+.slot-row .idx{color:var(--muted);width:16px;text-align:right;font-size:11px}
+.slot-row img{width:26px;height:26px} .slot-row .nm{flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.shipview{text-align:center;margin:6px 0}
+.shipview img{max-width:100%;max-height:280px;image-rendering:-webkit-optimize-contrast}
+.centerhead{display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;gap:8px}
+.boots{display:flex;gap:8px;padding-top:8px;border-top:1px solid var(--border);margin-top:8px;flex-wrap:wrap}
+.extra{display:flex;gap:4px;flex-wrap:wrap;margin-top:6px}
+.extra .chip{background:var(--panel2);border:1px solid var(--border);border-radius:4px;padding:2px 6px;font-size:11px}
+.rtabs{display:flex;border-bottom:1px solid var(--border);flex-wrap:wrap}
+.rtabs button{border:none;background:transparent;border-radius:0;padding:7px 0;flex:1;font-size:12px;min-width:48px}
+.rtabs button.active{color:#fff;border-bottom:2px solid var(--accent)}
+.rbody{padding:10px}
+.kv{display:flex;justify-content:space-between;padding:3px 0;border-bottom:1px dotted var(--border)}
+.kv .k{color:var(--muted)}
+section{margin-bottom:12px}
+section h4{font-size:12px;color:var(--muted);margin:8px 0 4px;border-bottom:1px solid var(--border);padding-bottom:2px}
+table{width:100%;border-collapse:collapse;font-size:12px}
+th,td{padding:3px 6px;border:1px solid var(--border);text-align:right}
+th{color:var(--muted);font-weight:400;background:var(--panel2)}
+td:first-child,th:first-child{text-align:left}
+.gauge{display:grid;grid-template-columns:auto 1fr auto;gap:6px;align-items:center;margin-bottom:6px}
+.gauge .bar{height:8px;background:#12151a;border-radius:4px;overflow:hidden}
+.gauge .bar i{display:block;height:100%;background:var(--accent)}
+.gauge .bar i.over{background:var(--red)}
+.modal-mask{position:fixed;inset:0;background:rgba(0,0,0,.6);display:flex;align-items:center;justify-content:center;z-index:50}
+.modal{background:var(--panel);border:1px solid var(--border);border-radius:8px;min-width:420px;max-width:640px;
+  padding:16px;max-height:82vh;overflow-y:auto}
+.modal h3{margin-bottom:10px}
+.modal textarea{width:100%;height:200px;font-family:monospace}
+.modal .btns{display:flex;gap:8px;margin-top:12px;justify-content:flex-end}
+.itemrow{display:flex;align-items:center;gap:8px;padding:4px 6px;border-bottom:1px dashed var(--border);cursor:pointer}
+.itemrow:hover{background:var(--panel2)}
+.itemrow img{width:26px;height:26px}
+.itemrow .grp{color:var(--muted);font-size:11px;margin-left:auto}
+.hint{color:var(--muted);font-size:11px;margin:4px 0}
+.qty-ed{width:56px;padding:2px 4px}
+.empty{color:var(--muted);text-align:center;padding:20px 0}
+.badge{background:var(--panel2);border:1px solid var(--border);border-radius:10px;padding:1px 8px;font-size:11px;color:var(--muted)}
+.deplete{color:var(--red)}
+</style>
+</head>
+<body>
+<div id="app">
+  <header>
+    <h1>⛵ 模拟装配</h1>
+    <div class="topbar">
+      <select v-model="charId" @change="onCharChange">
+        <option :value="null">未选择角色（无技能加成）</option>
+        <option v-for="c in characters" :key="c.id" :value="c.id">{{c.name}}</option>
+      </select>
+      <button @click="authStart">授权角色</button>
+      <span class="badge">ISK {{isk}}</span>
+      <span class="badge" v-if="charId && !hasSkills" title="该角色 token 无技能读取权限">无技能scope</span>
+    </div>
+  </header>
+
+  <main>
+    <!-- ============ 左栏 ============ -->
+    <section class="left">
+      <nav class="tabs">
+        <button :class="{active:ltab==='hull'}" @click="ltab='hull'">船体与装配</button>
+        <button :class="{active:ltab==='mod'}" @click="ltab='mod'">装备</button>
+        <button :class="{active:ltab==='ammo'}" @click="ltab='ammo'">弹药</button>
+      </nav>
+
+      <div class="body">
+        <!-- 船体与装配 -->
+        <template v-if="ltab==='hull'">
+          <div class="searchbar">
+            <input v-model="shipQ" placeholder="搜索舰船…" @input="searchShips">
+            <button @click="loadFittings">浏览</button>
+          </div>
+          <div class="ship-tree" v-show="ships.length">
+            <template v-for="g in shipGroups" :key="g">
+              <div class="hint" style="margin:4px 0 2px">{{g}}</div>
+              <div v-for="s in shipsByGroup(g)" :key="s.tid" class="itemrow" @click="chooseShip(s.tid)"
+                   :style="shipTid===s.tid?'background:#243651':''">
+                <img :src="'https://images.evetech.net/types/'+s.tid+'/icon?size=32'" :alt="s.name">
+                {{s.name}}
+              </div>
+              <div v-if="!shipsByGroup(g).length" class="hint">（分组 {{g}} 在搜索范围外）</div>
+            </template>
+            <div class="hint" v-if="ships.length===0">无匹配舰船</div>
+          </div>
+          <h4>装配列表</h4>
+          <div class="fit-list">
+            <div v-for="f in fittingList" :key="f.key" class="fit" @click="loadFit(f)"
+                 :class="{active:activeFitKey===f.key}">
+              <span>{{f.name}}</span><span class="muted">{{f.ship}}</span>
+            </div>
+            <div class="empty" v-if="!fittingList.length && !fittingsLoading">（从角色读取或本地存档）</div>
+            <div class="empty" v-if="fittingsLoading">读取中…</div>
+          </div>
+        </template>
+
+        <!-- 装备 / 弹药 -->
+        <template v-else>
+          <div class="searchbar">
+            <input v-model="itemQ" :placeholder="ltab==='mod'?'搜索装备…':'搜索弹药/无人机…'" @keyup.enter="searchItems">
+            <button @click="searchItems">搜索</button>
+          </div>
+          <div class="build-list">
+            <div v-for="(it,i) in buildList" :key="i" class="row">
+              <img :src="icon(it.tid)" :alt="it.name">
+              <span class="nm" style="flex:1">{{it.name}}</span>
+              <input class="qty-ed" type="number" min="1" v-model.number="it.qty" @change="simulate">
+              <button title="移除" @click="buildList.splice(i,1);simulate()">✕</button>
+            </div>
+            <div class="empty" v-if="!buildList.length">未添加装备，请搜索后点击添加</div>
+          </div>
+          <div class="itemrow" v-for="r in itemResults" :key="r.tid" @click="addItem(r)">
+            <img :src="icon(r.tid)" :alt="r.name"><span class="nm">{{r.name}}</span>
+            <span class="grp">{{r.group}}</span>
+          </div>
+          <div class="hint" v-if="itemResults.length===0 && itemQ">无结果</div>
+          <button class="primary" style="width:100%;margin-top:8px" @click="simulate">应用并模拟</button>
+        </template>
+      </div>
+
+      <div class="actions">
+        <button @click="openShipModal=true">装配舰船…</button>
+        <button @click="openSaveModal">另存为…</button>
+        <button @click="loadFittings" v-if="ltab!=='hull'">浏览</button>
+        <button @click="openEft=true">上传</button>
+      </div>
+    </section>
+
+    <!-- ============ 中央 ============ -->
+    <section class="center">
+      <div class="centerhead">
+        <span><b>{{shipName}}</b> <span class="muted" v-if="fitName">· {{fitName}}</span></span>
+        <span>
+          <button @click="openHistory">模拟历史</button>
+          <button @click="saveState">保存状态</button>
+        </span>
+      </div>
+
+      <div class="shipview" v-if="shipTid">
+        <img :src="'https://images.evetech.net/types/'+shipTid+'/render?size=256'" :alt="shipName">
+      </div>
+      <div class="empty" v-else>← 左侧选择舰船，或粘贴 EFT</div>
+
+      <div class="slot-group high" v-if="shipTid">
+        <h3>高槽（{{slots.high.length}}）</h3>
+        <div v-for="(it,i) in slots.high" :key="i" class="slot-row" @click="removeItem(it)">
+          <span class="idx">{{i+1}}</span>
+          <img :src="icon(it.tid)" :alt="it.name"><span class="nm">{{it.name}}</span>
+          <span class="badge" v-if="it.qty>1">×{{it.qty}}</span>
+        </div>
+        <div v-for="i in emptySlots('high')" :key="'h'+i" class="slot-row" style="opacity:.45">
+          <span class="idx">{{i}}</span><span class="nm muted">(空)</span>
+        </div>
+      </div>
+      <div class="slot-group med" v-if="shipTid">
+        <h3>中槽（{{slots.med.length}}）</h3>
+        <div v-for="(it,i) in slots.med" :key="i" class="slot-row" @click="removeItem(it)">
+          <span class="idx">{{i+1}}</span><img :src="icon(it.tid)" :alt="it.name"><span class="nm">{{it.name}}</span>
+          <span class="badge" v-if="it.qty>1">×{{it.qty}}</span>
+        </div>
+        <div v-for="i in emptySlots('med')" :key="'m'+i" class="slot-row" style="opacity:.45">
+          <span class="idx">{{i}}</span><span class="nm muted">(空)</span>
+        </div>
+      </div>
+      <div class="slot-group low" v-if="shipTid">
+        <h3>低槽（{{slots.low.length}}）</h3>
+        <div v-for="(it,i) in slots.low" :key="i" class="slot-row" @click="removeItem(it)">
+          <span class="idx">{{i+1}}</span><img :src="icon(it.tid)" :alt="it.name"><span class="nm">{{it.name}}</span>
+          <span class="badge" v-if="it.qty>1">×{{it.qty}}</span>
+        </div>
+        <div v-for="i in emptySlots('low')" :key="'l'+i" class="slot-row" style="opacity:.45">
+          <span class="idx">{{i}}</span><span class="nm muted">(空)</span>
+        </div>
+      </div>
+      <div class="slot-group rig" v-if="shipTid">
+        <h3>改装件（{{slots.rig.length}} / {{maxRigs}}）</h3>
+        <div v-for="(it,i) in slots.rig" :key="i" class="slot-row" @click="removeItem(it)">
+          <span class="idx">{{i+1}}</span><img :src="icon(it.tid)" :alt="it.name"><span class="nm">{{it.name}}</span>
+        </div>
+        <div v-for="i in emptySlots('rig')" :key="'r'+i" class="slot-row" style="opacity:.45">
+          <span class="idx">{{i}}</span><span class="nm muted">(空)</span>
+        </div>
+      </div>
+
+      <div class="extra">
+        <span class="chip" v-if="res.cargo">货舱 <span :class="over('cargo')">{{fmtNum(res.cargo.used)}}/{{fmtNum(res.cargo.cap)}} m³</span></span>
+        <span class="chip">机库 <span :class="over('drone_bay')">{{fmtNum(res.drone_bay.used)}}/{{fmtNum(res.drone_bay.cap)}} m³</span></span>
+        <span class="chip" v-for="c in other.charge" :key="'ch'+c.tid">{{c.name}} ×{{c.qty}}</span>
+        <span class="chip" v-for="c in other.drone" :key="'dr'+c.tid">{{c.name}} ×{{c.qty}}</span>
+        <span class="chip muted" v-if="unknowns.length">无法识别：{{unknowns.join('、')}}</span>
+      </div>
+
+      <div class="boots">
+        <span class="kv" style="min-width:150px"><span class="k">CPU</span>
+          <b :class="res.cpu && res.cpu.used>res.cpu.cap?'red':''">{{fmtNum(res.cpu.used)}} / {{fmtNum(res.cpu.cap)}}</b></span>
+        <span class="kv" style="min-width:150px"><span class="k">能量栅格</span>
+          <b :class="res.pg && res.pg.used>res.pg.cap?'red':''">{{fmtNum(res.pg.used)}} / {{fmtNum(res.pg.cap)}}</b></span>
+        <span class="kv" style="min-width:150px"><span class="k">炮台/发射器</span>
+          <b>{{res.turret.used}}/{{res.turret.cap}} · {{res.launcher.used}}/{{res.launcher.cap}}</b></span>
+      </div>
+    </section>
+
+    <!-- ============ 右栏 ============ -->
+    <aside class="right">
+      <nav class="rtabs">
+        <button :class="{active:rtab==='res'}" @click="rtab='res'">资源</button>
+        <button :class="{active:rtab==='def'}" @click="rtab='def'">抗性</button>
+        <button :class="{active:rtab==='atk'}" @click="rtab='atk'">火力</button>
+        <button :class="{active:rtab==='cap'}" @click="rtab='cap'">电容</button>
+        <button :class="{active:rtab==='tgt'}" @click="rtab='tgt'">目标</button>
+        <button :class="{active:rtab==='nav'}" @click="rtab='nav'">航行</button>
+      </nav>
+      <div class="rbody" v-if="sim">
+
+        <template v-if="rtab==='res'">
+          <section>
+            <h4>装配资源</h4>
+            <div class="gauge"><span>PG</span><div class="bar"><i :class="over('pg')" :style="{width:pct(res.pg)+'%'}"></i></div>
+              <span>{{fmtNum(res.pg.used)}}/{{fmtNum(res.pg.cap)}}</span></div>
+            <div class="gauge"><span>CPU</span><div class="bar"><i :class="over('cpu')" :style="{width:pct(res.cpu)+'%'}"></i></div>
+              <span>{{fmtNum(res.cpu.used)}}/{{fmtNum(res.cpu.cap)}}</span></div>
+            <div class="kv"><span class="k">炮台安装数</span><span>{{res.turret.used}}/{{res.turret.cap}}</span></div>
+            <div class="kv"><span class="k">发射器安装数</span><span>{{res.launcher.used}}/{{res.launcher.cap}}</span></div>
+            <div class="kv" v-if="res.calibration.cap"><span class="k">校准值</span><span>{{res.calibration.used}}/{{res.calibration.cap}}</span></div>
+            <h4>货舱</h4>
+            <div class="kv"><span class="k">货舱</span><span :class="over('cargo')">{{fmtNum(res.cargo.used)}} / {{fmtNum(res.cargo.cap)}} m³</span></div>
+            <div class="kv" v-if="res.drone_bay.cap"><span class="k">无人机舱</span><span>{{fmtNum(res.drone_bay.used)}} / {{fmtNum(res.drone_bay.cap)}} m³</span></div>
+            <div class="kv" v-if="res.bandwidth.cap"><span class="k">无人机带宽</span><span>{{fmtNum(res.bandwidth.used)}} / {{fmtNum(res.bandwidth.cap)}}</span></div>
+            <h4>槽位</h4>
+            <table>
+              <tr><th>槽</th><th>高</th><th>中</th><th>低</th><th>改</th></tr>
+              <tr><td>数量</td><td>{{res.slots.high}}</td><td>{{res.slots.med}}</td><td>{{res.slots.low}}</td><td>{{res.slots.rig}}</td></tr>
+            </table>
+          </section>
+        </template>
+
+        <template v-else-if="rtab==='def'">
+          <section>
+            <h4>有效HP <button style="float:right" @click="ehpMode=ehpMode==='ehp'?'raw':'ehp'">{{ehpMode==='ehp'?'有效':'原始'}}</button></h4>
+            <table>
+              <tr><th></th><th>EM</th><th>爆</th><th>动</th><th>热</th><th>HP</th><th>EHP</th></tr>
+              <tr v-for="layer in ['shield','armor','hull']" :key="layer">
+                <td>{{layerName(layer)}}</td>
+                <td v-for="v in resists[layer]" :key="layer+v">{{v}}%</td>
+                <td>{{fmtNum(ehp.layers[layer].hp)}}</td>
+                <td v-if="ehpMode==='ehp'">{{fmtNum(ehp.layers[layer].ehp)}}</td>
+                <td v-else>-</td>
+              </tr>
+            </table>
+            <div class="kv" style="margin-top:4px"><span class="k">总有效HP</span><b>{{fmtNum(ehp.total)}} HP</b></div>
+            <h4>维修</h4>
+            <div class="kv"><span class="k">装甲维修</span><span>{{repair.armor}} hp/s</span></div>
+            <div class="kv"><span class="k">护盾回充</span><span>{{repair.shield}} hp/s</span></div>
+          </section>
+        </template>
+
+        <template v-else-if="rtab==='atk'">
+          <section>
+            <h4>火力</h4>
+            <div class="kv"><span class="k">炮台 DPS</span><b>{{fw.turret.dps}}</b></div>
+            <div class="kv"><span class="k">炮台齐射</span><span>{{fmtNum(fw.turret.volley)}}</span></div>
+            <div class="kv"><span class="k">发射架 DPS</span><span>{{fw.launcher.dps}}</span></div>
+            <div class="kv"><span class="k">无人机 DPS</span><span>{{fw.drone.dps}}</span></div>
+            <div class="kv"><span class="k">总 DPS</span><b>{{fw.total}}</b></div>
+            <h4>武器明细</h4>
+            <table>
+              <tr><th>武器</th><th>DPS</th><th>齐射</th><th>弹药</th></tr>
+              <tr v-for="w in fw.weapons" :key="w.tid+w.charge">
+                <td>{{w.name}} <span class="muted" v-if="w.qty>1">×{{w.qty}}</span></td>
+                <td>{{w.dps}}</td><td>{{fmtNum(w.volley)}}</td><td>{{w.charge||'—'}}</td>
+              </tr>
+            </table>
+          </section>
+        </template>
+
+        <template v-else-if="rtab==='cap'">
+          <section>
+            <h4>电容器</h4>
+            <div class="kv"><span class="k">容量</span><b>{{fmtNum(cap().capacity)}} GJ</b></div>
+            <div class="kv"><span class="k">回充时间</span><span>{{fmtNum(cap().recharge)}} s</span></div>
+            <div class="kv"><span class="k">峰值回充</span><span>{{cap().peak}} GJ/s</span></div>
+            <div class="kv"><span class="k">消耗（全激活估算）</span><span>{{cap().drain}} GJ/s</span></div>
+            <div class="kv"><span class="k">状态</span>
+              <b :class="cap().stable?'green':'deplete'">{{cap().stable?'稳定':'不稳定'}}</b></div>
+            <div class="kv" v-if="!cap().stable"><span class="k">耗尽时间</span><span class="deplete">{{capTimeLeft}}</span></div>
+            <div class="hint">（"持续启用模块"估算口径，与游戏"当前激活"面板不同）</div>
+          </section>
+        </template>
+
+        <template v-else-if="rtab==='tgt'">
+          <section>
+            <h4>目标锁定系统</h4>
+            <div class="kv"><span class="k">锁定范围</span><span>{{fmtNum(tgt.range)}} km</span></div>
+            <div class="kv"><span class="k">锁定时间</span><span>{{tgt.lock_time}} s</span></div>
+            <div class="kv"><span class="k">扫描分辨率</span><span>{{tgt.scan_res}} mm</span></div>
+            <div class="kv"><span class="k">最大目标数</span><span>{{tgt.max_targets}}</span></div>
+            <div class="kv"><span class="k">信号半径</span><span>{{tgt.signature}} m</span></div>
+          </section>
+        </template>
+
+        <template v-else>
+          <section>
+            <h4>导航</h4>
+            <div class="kv"><span class="k">最大速度</span><b>{{fmtNum(nav.speed)}} m/s</b></div>
+            <div class="kv"><span class="k">质量</span><span>{{fmtNum(nav.mass)}} t</span></div>
+            <div class="kv"><span class="k">惯性系数</span><span>{{nav.agility}}</span></div>
+            <div class="kv"><span class="k">起跳时间</span><span>{{nav.align}} s</span></div>
+            <div class="kv"><span class="k">跃迁速度</span><span>{{nav.warp}} AU/s</span></div>
+          </section>
+        </template>
+      </div>
+      <div class="empty" v-else>选择舰船并添加装备，或读取装配</div>
+    </aside>
+  </main>
+
+  <!-- ============ 模态 ============ -->
+  <div class="modal-mask" v-if="openShipModal" @click.self="openShipModal=false">
+    <div class="modal">
+      <h3>装配舰船</h3>
+      <input v-model="shipQ2" placeholder="搜索舰船…" style="width:100%">
+      <div style="max-height:300px;overflow-y:auto;margin-top:8px">
+        <div class="itemrow" v-for="s in shipResults2" :key="s.tid" @click="chooseShip(s.tid);openShipModal=false">
+          <img :src="icon(s.tid)" :alt="s.name"><span>{{s.name}}</span><span class="grp">{{s.group}}</span>
+        </div>
+      </div>
+      <div class="btns"><button @click="openShipModal=false">取消</button></div>
+    </div>
+  </div>
+
+  <div class="modal-mask" v-if="openEft" @click.self="openEft=false">
+    <div class="modal">
+      <h3>粘贴 EFT</h3>
+      <textarea v-model="eftText" placeholder="[审判者级, 装配名]&#10;小型聚焦脉冲激光器 II x4&#10;…"></textarea>
+      <div class="hint">从游戏"复制装配方案"粘贴</div>
+      <div class="btns">
+        <button @click="openEft=false">取消</button>
+        <button class="primary" @click="importEft">解析并模拟</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="modal-mask" v-if="openSaveModal" @click.self="openSaveModal=false">
+    <div class="modal">
+      <h3>另存为</h3>
+      <input v-model="saveName" placeholder="装配名称" style="width:100%">
+      <div class="btns">
+        <button @click="openSaveModal=false">取消</button>
+        <button @click="saveLocal">保存到本地</button>
+        <button class="primary" :disabled="!charId" @click="saveEsi" title="需 esi-fittings.write_fittings.v1 授权">保存到 EVE</button>
+      </div>
+      <div class="hint" v-if="!charId">保存到 EVE 需先选择角色并授权 write 权限</div>
+    </div>
+  </div>
+
+  <div class="modal-mask" v-if="openHistory" @click.self="openHistory=false">
+    <div class="modal">
+      <h3>模拟历史</h3>
+      <div class="itemrow" v-for="(h,i) in history" :key="i" @click="restoreHistory(h);openHistory=false">
+        <span>{{h.name}}</span><span class="grp">{{h.time}}</span>
+      </div>
+      <div class="empty" v-if="!history.length">暂无历史</div>
+      <div class="btns"><button @click="openHistory=false">关闭</button></div>
+    </div>
+  </div>
+</div>
+
+<script src="vendor/vue.global.prod.js"></script>
+<script src="app.js"></script>
+</body>
+</html>
