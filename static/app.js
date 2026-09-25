@@ -40,7 +40,7 @@ createApp({ setup() {
  async function j(p,o){ return API(p,o); }
 
  // 角色
- async function loadChars(){ chars.value=cacheGet('chars',6e5)||[]; try{chars.value=await j('/api/characters'); cacheSet('chars',chars.value)}catch(e){} if(!charId.value){ const saved=cacheGet('cid',864e5); charId.value=saved||(chars.value[0]?.id||null); } charName.value=cacheGet('cname',864e5)||''; const c=chars.value.find(x=>x.id===charId.value); if(c)charName.value=c.name; if(charId.value) await onChar(); }
+ async function loadChars(){ chars.value=cacheGet('chars',6e5)||[]; try{chars.value=await j('/api/characters'); cacheSet('chars',chars.value)}catch(e){} let cid=charId.value; if(!cid){ cid=cacheGet('cid',864e5)||(chars.value[0]?.id||null); if(cid) charId.value=cid; } charName.value=cacheGet('cname',864e5)||''; const c=chars.value.find(x=>x.id===cid); if(c)charName.value=c.name; if(cid) await onChar(); }
  async function onChar(){ sk.value={}; isk.value='—'; esiFits.value={}; if(!charId.value)return; cacheSet('cid',charId.value);
   const c=chars.value.find(x=>x.id===charId.value); if(c){ charName.value=c.name; cacheSet('cname',c.name); }
   const cid=String(charId.value);
