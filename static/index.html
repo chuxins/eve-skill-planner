@@ -127,15 +127,15 @@ th{color:var(--m);font-weight:400;background:var(--p2)} td:first-child,th:first-
  <div class="m" style="text-align:center;padding:40px" v-else>← 左侧选舰船或粘贴EFT</div>
  <template v-if="sim">
   <div class="slot high" v-if="slots.high.length||cap('high')"><h4>高槽 {{slots.high.length}}/{{cap('high')}}</h4>
-   <div v-for="(it,i) in slots.high" :key="i" class="sitem" @click="rmItem(it)" @contextmenu.prevent="cargeMenuOpen(it,$event)"><img :src="icon(it.tid)"><span style="flex:1">{{it.name}}</span><span style="font-size:11px;color:var(--m)">PG {{n(it.attrs[30])}} CPU {{n(it.attrs[50])}} <span v-if="it.attrs[6]">Cap {{n(it.attrs[6])}}</span></span><span class="chip" v-if="it.qty>1">×{{it.qty}}</span></div>
+   <div v-for="(it,i) in slots.high" :key="i" class="sitem" @click="rmItem(it)" @contextmenu.prevent="chargeMenuOpen(it,$event)"><img :src="icon(it.tid)"><span style="flex:1">{{it.name}}</span><span style="font-size:11px;color:var(--m)">PG {{n(it.attrs[30])}} CPU {{n(it.attrs[50])}} <span v-if="it.attrs[6]">Cap {{n(it.attrs[6])}}</span></span><span class="chip" v-if="it.qty>1">×{{it.qty}}</span></div>
    <div v-for="i in emp('high')" :key="'he'+i" class="sitem" style="opacity:.3"><span class="m">(空)</span></div>
   </div>
   <div class="slot med" v-if="slots.med.length||cap('med')"><h4>中槽 {{slots.med.length}}/{{cap('med')}}</h4>
-   <div v-for="(it,i) in slots.med" :key="i" class="sitem" @click="rmItem(it)" @contextmenu.prevent="cargeMenuOpen(it,$event)"><img :src="icon(it.tid)"><span style="flex:1">{{it.name}}</span><span style="font-size:11px;color:var(--m)">PG {{n(it.attrs[30])}} CPU {{n(it.attrs[50])}} <span v-if="it.attrs[6]">Cap {{n(it.attrs[6])}}</span></span></div>
+   <div v-for="(it,i) in slots.med" :key="i" class="sitem" @click="rmItem(it)" @contextmenu.prevent="chargeMenuOpen(it,$event)"><img :src="icon(it.tid)"><span style="flex:1">{{it.name}}</span><span style="font-size:11px;color:var(--m)">PG {{n(it.attrs[30])}} CPU {{n(it.attrs[50])}} <span v-if="it.attrs[6]">Cap {{n(it.attrs[6])}}</span></span></div>
    <div v-for="i in emp('med')" :key="'me'+i" class="sitem" style="opacity:.3"><span class="m">(空)</span></div>
   </div>
   <div class="slot low" v-if="slots.low.length||cap('low')"><h4>低槽 {{slots.low.length}}/{{cap('low')}}</h4>
-   <div v-for="(it,i) in slots.low" :key="i" class="sitem" @click="rmItem(it)" @contextmenu.prevent="cargeMenuOpen(it,$event)"><img :src="icon(it.tid)"><span style="flex:1">{{it.name}}</span><span style="font-size:11px;color:var(--m)">PG {{n(it.attrs[30])}} CPU {{n(it.attrs[50])}} <span v-if="it.attrs[6]">Cap {{n(it.attrs[6])}}</span></span></div>
+   <div v-for="(it,i) in slots.low" :key="i" class="sitem" @click="rmItem(it)" @contextmenu.prevent="chargeMenuOpen(it,$event)"><img :src="icon(it.tid)"><span style="flex:1">{{it.name}}</span><span style="font-size:11px;color:var(--m)">PG {{n(it.attrs[30])}} CPU {{n(it.attrs[50])}} <span v-if="it.attrs[6]">Cap {{n(it.attrs[6])}}</span></span></div>
    <div v-for="i in emp('low')" :key="'le'+i" class="sitem" style="opacity:.3"><span class="m">(空)</span></div>
   </div>
   <div class="slot rig" v-if="slots.rig.length||cap('rig')"><h4>改装件 {{slots.rig.length}}/{{cap('rig')}}</h4>
@@ -245,11 +245,11 @@ th{color:var(--m);font-weight:400;background:var(--p2)} td:first-child,th:first-
 <div class="ctxmenu" v-if="chargeMenu.show" :style="{left:chargeMenu.x+'px',top:chargeMenu.y+'px'}" @mouseleave="chargeMenu.show=false">
  <div class="m" style="padding:2px 6px" v-if="chargeMenu.current">已装填: {{chargeMenu.current}}</div>
  <div class="m" style="padding:2px 6px" v-if="!chargeMenu.charges.length">无可用弹药</div>
- <div v-for="c in chargeMenu.charges" :key="c.tid" class="item-row" @click="cargeMenuPick(c)" style="padding:2px 8px;gap:4px">
+ <div v-for="c in chargeMenu.charges" :key="c.tid" class="item-row" @click="chargeMenuPick(c)" style="padding:2px 8px;gap:4px">
   <img :src="icon(c.tid)" style="width:20px;height:20px">{{c.name}} <span class="m">×{{c.qty}}</span>
  </div>
 </div>
 </div>
 <script src="/static/vendor/vue.global.prod.js"></script>
-<script src="/static/app.js?v=27"></script>
+<script src="/static/app.js?v=28"></script>
 </body></html>
