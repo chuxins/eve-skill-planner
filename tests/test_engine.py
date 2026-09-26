@@ -80,6 +80,11 @@ MULTI_M = 254       # 多频晶体 M（高伤）
 RADIO_M = 247       # 射频晶体 M（低伤远距）
 MULTI_S = 246       # 多频晶体 S（装填尺寸 1，用于尺寸不符回退）
 HYBRID_M = 223      # 铁质轨道弹 M（混合弹药：尺寸同为 2 但弹药组不符，也须回退）
+LAUNCHER = 499      # 轻型导弹发射器 I（无装填尺寸，只有弹药组 384/394 → 只按弹药组配弹）
+KIN_MISSILE = 210   # 鞭挞轻型导弹（动能 83）
+TORP_LAUNCHER = 503   # 鱼雷发射器 I
+TORP = 267          # 鞭挞鱼雷（动能 450）
+SIEGE2 = 4292       # 会战装备 II（shipID 域修正鱼雷弹药伤害 → 450×3=1350，用于加成等价性）
 
 
 def test_charge_auto_and_explicit():
@@ -148,6 +153,61 @@ def test_charge_explicit_ignores_qty_gate():
     r = simulate(SDE, PROPHECY, items, None, {PULSE2: RADIO_M})
     assert r["firepower"]["weapons"][0]["charge"] == "射频晶体 M"
     assert r["firepower"]["weapons"][0]["explicit_charge"] is True
+
+
+def test_launcher_is_weapon_and_gets_ammo():
+    """发射架纳入武器：进火力面板（有行内弹药下拉框）、占发射位、按弹药组自动配弹。"""
+    assert SDE.is_weapon(LAUNCHER) and SDE.slot_of(LAUNCHER) == "high"
+    assert SDE.is_weapon(TORP_LAUNCHER)
+    assert not SDE.is_weapon(5973)                     # 5MN Y-T8 微型跃迁推进器
+    assert not SDE.is_weapon(PROPHECY)                 # 舰船
+    items = [(LAUNCHER, 2), (KIN_MISSILE, 100)]
+    auto = simulate(SDE, PROPHECY, items)
+    w = auto["firepower"]["weapons"][0]
+    assert w["charge"] == "鞭挞轻型导弹" and w["charge_tid"] == KIN_MISSILE
+    assert w["charge_size"] is None                    # 发射架没有装填尺寸
+    assert w["types"] == [0.0, 0.0, 83.0, 0.0]         # 伤害取导弹
+    assert auto["firepower"]["launcher"]["dps"] == 10.4     # 83 × 2 / 16s
+    assert auto["firepower"]["turret"]["dps"] == 0.0        # 发射架不计入炮台
+    assert auto["firepower"]["total"] == 10.4
+    assert auto["resources"]["launcher"]["used"] == 2       # 占发射位（旧行为记 0）
+    r = simulate(SDE, PROPHECY, [(LAUNCHER, 2)], None, {LAUNCHER: KIN_MISSILE})
+    assert r["firepower"]["weapons"][0]["explicit_charge"] is True
+    assert r["firepower"]["launcher"]["dps"] == auto["firepower"]["launcher"]["dps"]
+    assert all(it["tid"] != KIN_MISSILE for it in r["items"])    # 不进货舱
+
+
+def test_launcher_without_ammo():
+    """发射架没配到弹药 → 照常出现在武器行（UI 提示「无弹药」），DPS 为 0。"""
+    w = simulate(SDE, PROPHECY, [(LAUNCHER, 2)])["firepower"]["weapons"][0]
+    assert w["charge"] is None and w["dps"] == 0.0 and w["cycle"] == 16000.0
+
+
+def test_explicit_charge_gets_same_bonuses_as_cargo():
+    """货舱里没有的弹药也必须吃到同样的船体/模块加成（否则同款弹药两个伤害）。
+
+    会战装备 II 的修正作用在**弹药**属性上（450 → 1350）；若显式弹药不走同一
+    套修正管线，从下拉框选它就只能算 450（dps 25.0 而非 75.0）。
+    """
+    in_cargo = simulate(SDE, PROPHECY, [(TORP_LAUNCHER, 1), (TORP, 100), (SIEGE2, 1)])
+    w = in_cargo["firepower"]["weapons"][0]
+    assert w["types"] == [0.0, 0.0, 1350.0, 0.0] and w["dps"] == 75.0
+    outside = simulate(SDE, PROPHECY, [(TORP_LAUNCHER, 1), (SIEGE2, 1)],
+                       None, {TORP_LAUNCHER: TORP})["firepower"]["weapons"][0]
+    assert outside["explicit_charge"] is True
+    assert outside["types"] == w["types"] and outside["dps"] == w["dps"]
+
+
+def test_virtual_charge_bonus_applies_only_to_virtual():
+    """`_apply(extra=...)` 只作用于虚拟弹药容器——绝不把修正重复施加到装配内物品。"""
+    from engine.simulate import Fit, Modifier
+    fit = Fit(SDE, PROPHECY, [(LAUNCHER, 1)])
+    fit.mod_attrs[LAUNCHER][117] = 10.0
+    virtual = {KIN_MISSILE: dict(SDE.type_attrs[KIN_MISSILE])}
+    fit._apply([Modifier("shipID", "LocationGroupModifier", 117, 7, 25.0, "module",
+                         False, group_id=384)], extra=virtual)
+    assert virtual[KIN_MISSILE][117] == 83.0 * 1.25    # 虚拟弹药吃到 +25%
+    assert fit.mod_attrs[LAUNCHER][117] == 10.0        # 装配内物品未被重复加成
 
 
 def test_eft_Parser():

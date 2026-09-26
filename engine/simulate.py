@@ -159,6 +159,8 @@ class Fit:
         self.items = list(modules)
         self.skills = skills or {}
         self.charges = {int(k): int(v) for k, v in (charges or {}).items() if v}
+        # 不在装配/货舱里的显式弹药 → 应用加成后的属性（见 _solve_virtual_charges）
+        self.charge_attrs = {}
 
     # ------------------------------------------------------------ 技能
     def _skill_bonus_map(self):
@@ -243,25 +245,32 @@ class Fit:
         t = self.sde.type_attrs.get(tid, {})
         return any(t.get(aid) == skill_tid for aid in A_REQ_SKILL)
 
-    def _targets_of(self, mod):
-        """把一条修正展开成 (容器, 目标属性) 列表。"""
+    def _targets_of(self, mod, extra=None):
+        """把一条修正展开成 (容器, 目标属性) 列表。
+
+        extra: {tid: 属性字典} —— 一并参与匹配的「虚拟物品」。用于给不在装配里的
+        显式弹药算加成（船体/模块的 Location*Modifier 只作用于装配内物品，若不给
+        虚拟容器，同款弹药「货舱里」与「下拉框选中」会算出两个伤害）。
+        """
         tgt = mod.modified
         if mod.func == "ItemModifier":
             if mod.domain == "shipID":
                 return [(self.ship_attrs, tgt)]
             if mod.domain == "itemID":
                 return []
-        elif mod.func == "LocationRequiredSkillModifier":
+        pool = [(self.mod_attrs[tid], tid) for tid in {t for t, _ in self.items}]
+        if extra:
+            pool += [(attrs, tid) for tid, attrs in extra.items()]
+        if mod.func == "LocationRequiredSkillModifier":
             sk = mod.skill_id
             if not sk:
                 return []
-            return [(self.mod_attrs[tid], tgt) for tid in {t for t,_ in self.items}
-                    if self._requires_skill(tid, sk)]
+            return [(attrs, tgt) for attrs, tid in pool if self._requires_skill(tid, sk)]
         elif mod.func == "LocationGroupModifier":
             gid = mod.group_id
             if not gid:
                 return []
-            return [(self.mod_attrs[tid], tgt) for tid in {t for t,_ in self.items}
+            return [(attrs, tgt) for attrs, tid in pool
                     if self.sde.types.get(tid, {}).get("group_id") == gid]
         return []
 
@@ -273,7 +282,25 @@ class Fit:
         module_mods = self._collect_module_mods()
         self._apply(module_mods)
         self._apply_prop_mods()
+        self._solve_virtual_charges(skill_mods + module_mods)
         return self._finalize()
+
+    def _solve_virtual_charges(self, mods):
+        """给「不在装配里」的显式弹药算属性：用同一批修正单独过一遍。
+
+        部分模块/船体的修正直接作用在**弹药**伤害属性上（如会战装备对鱼雷），而
+        Location*Modifier 只作用于装配内物品；下拉框能选到货舱外的弹药，若不这样
+        处理，同款弹药会出现「货舱里能加成、选它反而没加成」的两个伤害。
+        """
+        if not mods:
+            return
+        in_fit = {t for t, _ in self.items}
+        for tid in set(self.charges.values()):
+            if tid in in_fit:
+                continue
+            attrs = dict(self.sde.type_attrs.get(tid, {}))
+            self._apply(mods, extra={tid: attrs})
+            self.charge_attrs[tid] = attrs
 
     def _apply_prop_mods(self):
         """推进器（MWD/AB）特殊处理：moduleBonus 效果按游戏规则被动生效。
@@ -314,11 +341,18 @@ class Fit:
         table_ab = {1: 250_000, 5: 250_000, 10: 2_500_000, 100: 25_000_000}
         return (table_mwd if is_mwd else table_ab).get(size, 0)
 
-    def _apply(self, mods):
-        """按加性→乘性落实一批修正。"""
+    def _apply(self, mods, extra=None):
+        """按加性→乘性落实一批修正。
+
+        extra: {tid: 属性字典} —— 虚拟物品容器。提供时**只**作用于这些容器
+        （用于给不在装配里的弹药算加成，避免把修正重复施加到装配内物品上）。
+        """
+        only = {id(attrs) for attrs in extra.values()} if extra else None
         targets = {}
         for mod in mods:
-            for container, aid in self._targets_of(mod):
+            for container, aid in self._targets_of(mod, extra):
+                if only is not None and id(container) not in only:
+                    continue
                 targets.setdefault((id(container), aid), _Target(container)).add(mod)
         for (_, aid), group in targets.items():
             group.container[aid] = group.apply(group.container.get(aid, 0.0))
@@ -493,13 +527,15 @@ class Fit:
 
         UI 下拉框列出**全部兼容弹药**（不限于货舱），因此用户可能选中货舱里没有的
         弹药：此时按 SDE 数据算伤害；qty=0 仅表示它不占货舱数量/容积。
+        属性优先取自 charge_attrs（含船体/模块加成，与货舱内同款一致）。
         """
         t = self.sde.types.get(tid)
         if not t or t.get("category_id") != CAT_CHARGE:
             return None
+        attrs = self.charge_attrs.get(tid) or self.sde.type_attrs.get(tid, {})
         return {"tid": tid, "name": self.sde.name(tid), "qty": 0, "slot": None,
                 "category_id": CAT_CHARGE, "group_id": t.get("group_id"),
-                "attrs": dict(self.sde.type_attrs.get(tid, {}))}
+                "attrs": dict(attrs)}
 
     def _charge_fits(self, weapon, charge):
         """弹药能否装进该武器：装填尺寸(attr 128)一致 + 弹药组属于 chargeGroup1..5。"""
@@ -530,8 +566,10 @@ class Fit:
                 if c and self._charge_fits(weapon, c):
                     return c
             size = weapon["attrs"].get(A_CHARGE_SIZE)
-            # ① 自动配弹优先「弹药组也匹配」者（尺寸相同但家族不同的弹药不再被误选）
-            if size is not None:
+            has_groups = any(weapon["attrs"].get(g) for g in A_CHARGE_GROUPS)
+            # ① 自动配弹优先「装填尺寸 + 弹药组」都匹配者（尺寸相同但家族不同的弹药不再被误选）
+            #    发射架没有装填尺寸属性 → 只按弹药组匹配（否则发射架永远配不到导弹）
+            if size is not None or has_groups:
                 for i, c in enumerate(charges):
                     if i in used or c["qty"] < weapon["qty"]:
                         continue

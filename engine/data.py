@@ -33,6 +33,11 @@ CAT_CHARGE = 8
 META_LABELS = {1: "T1", 2: "T2", 3: "故事线", 4: "势力", 5: "官员", 6: "死亡空间",
                8: "标准", 14: "T3"}
 
+# 发射架类武器靠这两个效果识别：炮台是 turretFitted + 攻击性效果，发射架在 SDE 里
+# 只挂 launcherFitted + useMissiles（没有 is_offensive 效果，也不是 effect_category 2），
+# 故此前被 is_weapon 漏判、不进入火力面板（也没有行内弹药下拉框）。
+LAUNCHER_EFFECTS = ("launcherFitted", "useMissiles")
+
 
 def ammo_family(group_name):
     """从弹药组名提取家族名：去掉 高级/自动锁定/超大型/势力/建筑 等前缀。"""
@@ -162,11 +167,18 @@ class StaticData:
         return None
 
     def is_weapon(self, tid):
-        """炮台/发射架类武器（伤害相关，可输出 DPS 的高槽装备）。"""
+        """炮台/发射架类武器（占高槽炮位/发射位、可输出 DPS 的装备）。
+
+        炮台：带 is_offensive 或 effect_category==2 的效果；发射架：只挂
+        launcherFitted/useMissiles（SDE 未标攻击性，需按效果名额外识别）。
+        简言之「炮台 + 发射架」，不含隐身/打捞/牵引等非伤害高槽装备。
+        """
         fx = self.type_effects.get(tid, {})
         for eid in fx:
             eff = self.effects.get(eid, {})
             if eff.get("offensive") or eff.get("category") == 2:
+                return True
+            if eff.get("name") in LAUNCHER_EFFECTS:
                 return True
         return False
 

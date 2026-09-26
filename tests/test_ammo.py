@@ -24,6 +24,7 @@ LIGHT_LAUNCHER = 499   # 轻型导弹发射器 I（无装填尺寸，只有弹�
 MULTI_M = 254       # 多频晶体 M
 RADIO_M = 247       # 射频晶体 M
 HYBRID_M = 223      # 铁质轨道弹 M（混合弹药：尺寸同为 2 但弹药组不符）
+VENGEANCE_MISSILE = 210   # 鞭挞轻型导弹（动能 83；发射架专用弹药，无装填尺寸）
 
 
 @pytest.fixture
@@ -88,8 +89,8 @@ def test_every_listed_charge_is_engine_accepted(client):
 def test_missile_launcher_lists_its_own_family(client):
     """发射架没有装填尺寸属性(attr 128) → 退化为只按弹药组匹配，且不含炮弹/晶体。
 
-    注：导弹/发射架尚未纳入火力面板（`is_weapon` 只认炮台类效果），故此处只校验
-    接口与兼容性判定；「选中即生效」由炮台用例 test_selected_charge_needs_no_cargo 覆盖。
+    发射架也已纳入火力面板（`is_weapon` 识别 launcherFitted/useMissiles），故「选中
+    即生效」对发射架同样成立：显式选中的导弹即使不在货舱，也会改变发射架 DPS。
     """
     lst = charges(client, LIGHT_LAUNCHER)
     assert len(lst) >= 20
@@ -98,3 +99,11 @@ def test_missile_launcher_lists_its_own_family(client):
     assert not ({c["tid"] for c in lst} & {MULTI_M, RADIO_M, HYBRID_M})
     assert SDE.charge_compatible(LIGHT_LAUNCHER, lst[0]["tid"]) is True
     assert SDE.charge_compatible(LIGHT_LAUNCHER, HYBRID_M) is False
+    # 每发列出的导弹作显式选择都被采纳；且不需要它在货舱里
+    missile = next(c for c in lst if c["tid"] == VENGEANCE_MISSILE)
+    r = simulate(SDE, PROPHECY, [(LIGHT_LAUNCHER, 2)], None, {LIGHT_LAUNCHER: missile["tid"]})
+    w = r["firepower"]["weapons"][0]
+    assert (w["charge_tid"], w["charge"]) == (VENGEANCE_MISSILE, missile["name"])
+    assert w["explicit_charge"] is True and w["types"] == missile["damage"]
+    assert r["firepower"]["launcher"]["dps"] == 10.4              # 83 × 2 / 16s
+    assert all(it["tid"] != VENGEANCE_MISSILE for it in r["items"])
