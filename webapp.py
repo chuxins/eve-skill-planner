@@ -1,13 +1,15 @@
 """eve-skill-planner Web 应用（Flask）。
 
-- 静态前端：/（static/index.html）
+- 静态前端：/（static/index.html，注入静态资源自动版本号）
 - 模拟接口：/api/simulate、/api/eft/simulate、/api/search、/api/ships、/api/item/<tid>
-- ESI 接口：/api/characters、/api/characters/<cid>/fittings|skills|wallet
-- OAuth：/api/auth/start → EVE SSO → qq_auth_bot 转发 → /callback/
+- 技能规划：/api/skillplan、/api/characters/<cid>/skillqueue
+- ESI 接口：/api/characters、/api/characters/<cid>/fittings|skills|wallet|attributes
+- OAuth：/api/auth/start → EVE SSO（本应用独立凭据 + PKCE）→ nginx 反代 /api/auth/callback → /callback/
 - 本地装配存档：/api/local/fittings
 """
 
 import argparse
+import hashlib
 import json
 import logging
 import os
@@ -23,6 +25,7 @@ import oauth
 from engine.data import StaticData
 from engine.eft import parse_eft, render_eft
 from engine.simulate import simulate, SimulationError
+from engine.skillplan import build_plan
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 log = logging.getLogger("webapp")
@@ -35,11 +38,39 @@ _HIDDEN_ATTRS = set(range(182, 192)) | {277, 278, 279, 1286, 1287} | {280, 275, 
 
 
 # ---------------------------------------------------------------- 静态
+def _asset_version():
+    """静态资源版本号：static/ 下所有文件 (相对路径, mtime, 大小) 的摘要。
+
+    index.html 里用 {{ASSET_VERSION}} 占位，任何 JS/CSS/SVG 改动后版本号
+    自动变化，不必再手工改 `app.js?v=NN`。
+    """
+    h = hashlib.md5()
+    for root, _dirs, files in os.walk(config.STATIC_DIR):
+        for fn in sorted(files):
+            path = os.path.join(root, fn)
+            try:
+                st = os.stat(path)
+            except OSError:
+                continue
+            rel = os.path.relpath(path, config.STATIC_DIR)
+            h.update(f"{rel}:{st.st_mtime_ns}:{st.st_size}".encode("utf-8"))
+    return h.hexdigest()[:10]
+
+
 @app.route("/")
 def index():
-    resp = send_from_directory(config.STATIC_DIR, "index.html")
+    with open(os.path.join(config.STATIC_DIR, "index.html"), encoding="utf-8") as f:
+        html = f.read()
+    resp = app.response_class(
+        html.replace("{{ASSET_VERSION}}", _asset_version()), mimetype="text/html")
     resp.headers["Cache-Control"] = "no-cache"
     return resp
+
+
+@app.route("/favicon.ico")
+def favicon_ico():
+    """避免浏览器默认探测 /favicon.ico 产生 404 噪音；真实图标见 index.html 的 link。"""
+    return "", 204
 
 
 @app.route("/static/<path:name>")
@@ -195,8 +226,10 @@ def api_simulate():
     ship_tid = int(data.get("ship_tid") or 0)
     items = [(int(a), int(b)) for a, b in data.get("items") or []]
     skills = {int(k): int(v) for k, v in (data.get("skills") or {}).items()}
+    # charges: {武器 tid: 弹药 tid}，UI 中每门武器的显式弹药选择
+    charges = {int(k): int(v) for k, v in (data.get("charges") or {}).items() if v}
     try:
-        result = simulate(sde, ship_tid, items, skills)
+        result = simulate(sde, ship_tid, items, skills, charges)
     except SimulationError as exc:
         return jsonify({"error": str(exc)}), 400
     return jsonify(_decorate(result))
@@ -251,6 +284,28 @@ def api_characters():
     return jsonify(esi.list_characters())
 
 
+@app.post("/api/logout")
+def api_logout():
+    """退出登录：注销本地 token（all=true 全部，或只注销 body.cid）。
+
+    尽力在 EVE SSO 侧吊销 refresh token；响应附带剩余已授权角色，便于前端
+    一次刷新完成，不必再调 /api/characters。
+    """
+    data = request.get_json(silent=True) or {}
+    cid = data.get("cid")
+    if data.get("all"):
+        results = esi.forget_all()
+    elif cid:
+        results = [esi.forget(int(cid))]
+    else:
+        return jsonify({"error": "需指定 cid 或 all=true"}), 400
+    skipped = [r for r in results if not r["removed"]]
+    log.info("logout: 已注销 %s，跳过 %s",
+             [r["id"] for r in results if r["removed"]], [r["id"] for r in skipped])
+    return jsonify({"ok": not skipped, "removed": results, "skipped": skipped,
+                    "characters": esi.list_characters()})
+
+
 @app.get("/api/characters/<int:cid>/skills")
 def api_char_skills(cid):
     try:
@@ -265,6 +320,89 @@ def api_char_wallet(cid):
         return jsonify({"balance": esi.get_wallet(cid)})
     except Exception as exc:
         return jsonify({"error": str(exc)}), 502
+
+
+@app.get("/api/characters/<int:cid>/attributes")
+def api_char_attributes(cid):
+    """角色有效属性（含植入体），训练时间估算用。"""
+    try:
+        return jsonify(esi.get_attributes(cid))
+    except Exception as exc:
+        return jsonify({"error": str(exc)}), 502
+
+
+def _scope_hint(exc, scope):
+    """把 ESI 的 401/403 转成可读提示（提示重新授权缺的 scope）。"""
+    msg = str(exc)
+    if "401" in msg or "403" in msg:
+        return f"缺少 {scope} 授权，请点页头「登录」重新授权"
+    return msg
+
+
+def _queue_row(sde, entry):
+    """ESI 训练队列条目 → 展示用行（技能名从 SDE 补全）。"""
+    tid = int(entry.get("skill_id") or 0)
+    return {"position": int(entry.get("queue_position") or 0),
+            "tid": tid, "name": sde.name(tid) if tid else "?",
+            "finished_level": int(entry.get("finished_level") or 0),
+            "start_date": entry.get("start_date"),
+            "finish_date": entry.get("finish_date")}
+
+
+@app.get("/api/characters/<int:cid>/skillqueue")
+def api_char_skillqueue(cid):
+    """训练队列；缺 read_skillqueue scope 时降级返回 error 字段（仍 200）。"""
+    try:
+        raw = esi.get_skillqueue(cid)
+    except Exception as exc:
+        return jsonify({"queue": [],
+                        "error": _scope_hint(exc, "esi-skills.read_skillqueue.v1")})
+    return jsonify({"queue": [_queue_row(sde, e) for e in raw], "error": None})
+
+
+@app.post("/api/skillplan")
+def api_skillplan():
+    """技能计划：舰船 + 当前装配的需求技能、缺口与训练时间。
+
+    body: {cid, ship_tid, items:[[tid,qty]], skills:{tid:level}}
+    - 省略 skills → 后端直接向 ESI 拉取（权威）；提供则用请求值
+    - attributes 始终取自 ESI（训练速率 = 主属性 + 副属性/2）
+    - 训练队列缺 scope 只降级提示，不影响计划本身
+    """
+    data = request.get_json(force=True)
+    cid = int(data.get("cid") or 0)
+    ship_tid = int(data.get("ship_tid") or 0)
+    items = [(int(a), int(b)) for a, b in data.get("items") or []]
+    if not cid or not ship_tid:
+        return jsonify({"error": "缺少角色或舰船"}), 400
+
+    skills_source = "client"
+    raw_skills = data.get("skills")
+    if raw_skills is None:
+        try:
+            skills = esi.get_skills(cid)
+            skills_source = "esi"
+        except Exception as exc:
+            return jsonify({"error": _scope_hint(exc, "esi-skills.read_skills.v1")}), 502
+    else:
+        skills = {int(k): int(v) for k, v in raw_skills.items()}
+
+    attrs, attrs_error = {}, None
+    try:
+        attrs = esi.get_attributes(cid)
+    except Exception as exc:
+        attrs_error = _scope_hint(exc, "esi-skills.read_skills.v1")
+
+    plan = build_plan(sde, ship_tid, [tid for tid, _ in items], skills, attrs)
+    plan.update({"cid": cid, "skills_source": skills_source,
+                 "attributes_error": attrs_error})
+    try:
+        plan["queue"] = [_queue_row(sde, e) for e in esi.get_skillqueue(cid)]
+        plan["queue_error"] = None
+    except Exception as exc:
+        plan["queue"] = []
+        plan["queue_error"] = _scope_hint(exc, "esi-skills.read_skillqueue.v1")
+    return jsonify(plan)
 
 
 @app.get("/api/characters/<int:cid>/fittings")
@@ -367,7 +505,8 @@ def api_callback():
     with open(os.path.join(config.TOKEN_DIR, f"{char['id']}.json"), "w") as f:
         json.dump(token, f)
     log.info("已授权角色：%s (ID:%d)，scopes=%s", char["name"], char["id"], char["scopes"])
-    return redirect(f"{config.PUBLIC_BASE}/#/fitting?ok=1")
+    # 带上 cid：前端据此选中「刚授权的角色」，多账号时不会误选其它角色
+    return redirect(f"{config.PUBLIC_BASE}/?ok=1&cid={char['id']}#/fitting")
 
 
 def main():

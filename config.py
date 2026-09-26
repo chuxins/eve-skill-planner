@@ -48,15 +48,18 @@ def eve_credentials():
     return client_id, client_secret, callback_url
 
 
-# 授权范围：模拟装配所需
+# 授权范围：模拟装配 + 技能规划所需
 SCOPES = [
     "esi-fittings.read_fittings.v1",
     "esi-fittings.write_fittings.v1",
     "esi-skills.read_skills.v1",
+    "esi-skills.read_skillqueue.v1",
     "esi-wallet.read_character_wallet.v1",
 ]
 
 PORT = 8090
 SSO_AUTHORIZE = "https://login.eveonline.com/v2/oauth/authorize"
 TOKEN_URL = "https://login.eveonline.com/v2/oauth/token"
+# 退出登录时吊销 refresh token（RFC 7009）
+SSO_REVOKE = "https://login.eveonline.com/v2/oauth/revoke"
 ESI_BASE = "https://esi.evetech.net"

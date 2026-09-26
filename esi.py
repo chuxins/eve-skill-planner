@@ -128,6 +128,66 @@ def get_token(cid):
         return token
 
 
+def revoke(token):
+    """在 EVE SSO 侧吊销 refresh token（RFC 7009）。
+
+    网络/凭据异常一律返回 False（本地 token 仍会被删除，只是 SSO 侧未失效）。
+    """
+    rt = (token or {}).get("refresh_token") or (token or {}).get("access_token")
+    if not rt:
+        return False
+    try:
+        client_id, secret, _ = config.eve_credentials()
+        resp = requests.post(config.SSO_REVOKE, data={
+            "token_type_hint": "refresh_token",
+            "token": rt,
+            "client_id": client_id,
+            "client_secret": secret,
+        }, timeout=15)
+        return resp.ok
+    except Exception:
+        return False
+
+
+def forget(cid):
+    """退出登录（单个角色）：删本地 token 文件 + 清内存缓存，尽力吊销 SSO 令牌。
+
+    返回 {id,name,removed,revoked,note}。CLI 的 token.json 不属于本应用，
+    绝不删除；此类角色 removed=False 并通过 note 提示手动处理。
+    """
+    cid = int(cid)
+    path = os.path.join(config.TOKEN_DIR, f"{cid}.json")
+    with _lock:
+        token, _ = _cache.pop(cid, (None, 0))
+    if not token:
+        token = _load_token_file(cid)
+        if token and str(token.get("id", cid)) != str(cid) and not os.path.exists(path):
+            token = None
+    name = (token or {}).get("name") or (token or {}).get("CharacterName") or str(cid)
+    revoked = revoke(token) if token else False
+    removed = False
+    note = "仅存在于 CLI token.json（~/.eve-skill-planner/token.json），需手动删除"
+    if os.path.exists(path):
+        try:
+            os.remove(path)
+            removed, note = True, None
+        except OSError as exc:
+            note = f"删除失败：{exc}"
+    return {"id": cid, "name": name, "removed": removed, "revoked": revoked, "note": note}
+
+
+def forget_all():
+    """退出登录（全部角色）：清空 tokens/ 并清内存缓存。"""
+    out = []
+    if os.path.isdir(config.TOKEN_DIR):
+        for fn in sorted(os.listdir(config.TOKEN_DIR)):
+            if fn.endswith(".json") and fn[:-5].isdigit():
+                out.append(forget(int(fn[:-5])))
+    with _lock:
+        _cache.clear()
+    return out
+
+
 def _headers(cid):
     return {"Authorization": f"Bearer {get_token(cid)['access_token']}",
             "User-Agent": "eve-skill-planner/1.0 (your-contact@example.com)"}
@@ -153,6 +213,28 @@ def get_skills(cid):
     data = esi_get(cid, f"/latest/characters/{cid}/skills/?datasource=tranquility")
     return {int(s["skill_id"]): int(s.get("active_skill_level") or 0)
             for s in data.get("skills", [])}
+
+
+def get_attributes(cid):
+    """角色有效属性（含植入体）：{perception: n, ...}。
+
+    实测 ESI 该接口返回扁平整数（与 swagger 文档的 base/implant 对象不同），
+    两种形状都兼容，便于后续改版。
+    """
+    data = esi_get(cid, f"/latest/characters/{cid}/attributes/?datasource=tranquility")
+    out = {}
+    for key in ("charisma", "intelligence", "memory", "perception", "willpower"):
+        val = data.get(key)
+        if isinstance(val, dict):
+            out[key] = float(val.get("base") or 0) + float(val.get("implant") or 0)
+        elif isinstance(val, (int, float)):
+            out[key] = float(val)
+    return out
+
+
+def get_skillqueue(cid):
+    """角色训练队列（需 esi-skills.read_skillqueue.v1）。"""
+    return esi_get(cid, f"/latest/characters/{cid}/skillqueue/?datasource=tranquility")
 
 
 def get_wallet(cid):

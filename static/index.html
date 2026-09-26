@@ -3,6 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="icon" href="/static/favicon.svg?v={{ASSET_VERSION}}" type="image/svg+xml">
 <title>模拟装配 · eve-skill-planner</title>
 <style>
 :root{--bg:#14161a;--p:#1c1f26;--p2:#22262f;--b:#2e333d;--t:#cfd4dc;--m:#8b93a1;--a:#7aa2ff;--r:#ff6b6b;--g:#5fe08b;--y:#e8c06a}
@@ -58,6 +59,9 @@ th{color:var(--m);font-weight:400;background:var(--p2)} td:first-child,th:first-
 .modal h3{margin-bottom:10px} .modal textarea{width:100%;height:180px;font-family:monospace}
 .modal .act{display:flex;gap:8px;margin-top:12px;justify-content:flex-end}
 .qty{width:50px;padding:2px 4px}.chip{background:var(--p2);border:1px solid var(--b);border-radius:10px;padding:1px 7px;font-size:11px;color:var(--m)}
+.ammo{max-width:138px;padding:1px 4px;font-size:11px}.chip.r{color:var(--r);border-color:var(--r)}
+/* 轻提示：右下角浮层（退出登录等操作反馈） */
+.toast{position:fixed;right:14px;bottom:14px;background:var(--p);border:1px solid var(--a);border-radius:6px;padding:6px 12px;font-size:12px;z-index:60;box-shadow:0 3px 12px rgba(0,0,0,.5)}
 </style>
 </head>
 <body>
@@ -66,9 +70,11 @@ th{color:var(--m);font-weight:400;background:var(--p2)} td:first-child,th:first-
  <b>⛵ 模拟装配</b>
  <span v-if="charName" class="chip">{{charName}}</span>
  <button class="sm" @click="authStart" v-if="!charId">登录</button>
+ <button class="sm" @click="logout" v-if="charId" title="退出登录：注销当前角色 {{charName}}（其它已授权角色保留）">退出登录</button>
  <span class="chip" v-if="charId">ISK {{isk}}</span>
  <span class="chip m" v-if="charId&&!hasSkills">无技能scope</span>
 </header>
+<div class="toast" v-if="toast">{{toast}}</div>
 <main :style="'grid-template-columns:'+leftW+'px 5px 1fr 5px '+rightW+'px'">
 <!-- ===== 左栏 ===== -->
 <section class="l">
@@ -178,7 +184,7 @@ th{color:var(--m);font-weight:400;background:var(--p2)} td:first-child,th:first-
  <div class="m" style="text-align:center;padding:40px" v-else>← 左侧选舰船或粘贴EFT</div>
  <template v-if="sim">
   <div class="slot high" v-if="slots.high.length||cap('high')"><h4>高槽 {{slots.high.length}}/{{cap('high')}}</h4>
-   <div v-for="(it,i) in slots.high" :key="i" class="sitem" @click="rmItem(it)"><img :src="icon(it.tid)"><span style="flex:1">{{it.name}}</span><span style="font-size:11px;color:var(--m)">PG {{n(it.attrs[30])}} CPU {{n(it.attrs[50])}} <span v-if="it.attrs[6]">Cap {{n(it.attrs[6])}}</span></span><span class="chip" v-if="it.qty>1">×{{it.qty}}</span></div>
+   <div v-for="(it,i) in slots.high" :key="i" class="sitem" @click="rmItem(it)"><img :src="icon(it.tid)"><span style="flex:1">{{it.name}}</span><template v-if="weaponMap[it.tid]"><span class="chip r" v-if="!weaponMap[it.tid].charge" title="该武器未配到弹药，可在左侧「弹药」分类添加">无弹药</span><select class="ammo" v-model="charges[it.tid]" @click.stop @change="doSim()" title="为该武器显式选择弹药（默认按尺寸自动配）"><option value="">弹药：自动</option><option v-for="c in ammoFor(weaponMap[it.tid])" :key="c.tid" :value="c.tid">{{c.name}}</option></select></template><span style="font-size:11px;color:var(--m)">PG {{n(it.attrs[30])}} CPU {{n(it.attrs[50])}} <span v-if="it.attrs[6]">Cap {{n(it.attrs[6])}}</span></span><span class="chip" v-if="it.qty>1">×{{it.qty}}</span></div>
    <div v-for="i in emp('high')" :key="'he'+i" class="sitem" style="opacity:.3"><span class="m">(空)</span></div>
   </div>
   <div class="slot med" v-if="slots.med.length||cap('med')"><h4>中槽 {{slots.med.length}}/{{cap('med')}}</h4>
@@ -217,8 +223,40 @@ th{color:var(--m);font-weight:400;background:var(--p2)} td:first-child,th:first-
   <button :class="{on:rt==='cap'}" @click="rt='cap'">电容</button>
   <button :class="{on:rt==='tgt'}" @click="rt='tgt'">目标</button>
   <button :class="{on:rt==='nav'}" @click="rt='nav'">航行</button>
+  <button :class="{on:rt==='skill'}" @click="rt='skill'">技能</button>
  </nav>
- <div class="rpad" v-if="sim">
+ <!-- ===== 技能规划（不依赖 sim：未选舰船时也能看训练队列） ===== -->
+ <div class="rpad" v-if="rt==='skill'">
+  <div class="m" v-if="!charId">点页头「登录」授权后可查看技能缺口与训练时间</div>
+  <div class="r" v-else-if="planErr">{{planErr}}</div>
+  <div v-else-if="!plan" class="m">{{planLoading?'加载中…':'—'}}</div>
+  <template v-else>
+   <div style="display:flex;gap:4px;flex-wrap:wrap;margin-bottom:6px" v-if="plan.attributes&&plan.attributes.perception">
+    <span class="chip" v-for="(v,k) in plan.attributes" :key="k">{{attrName(k)}} {{v}}</span>
+   </div>
+   <div class="m" v-if="plan.attributes_error">{{plan.attributes_error}}</div>
+   <template v-if="plan.ship">
+    <div class="kv"><span class="k">需求技能（含前置）</span><span>{{plan.requirements.length}} 项</span></div>
+    <div class="kv"><span class="k">缺口</span><b :class="plan.missing.length?'r':'g'">{{plan.missing.length}} 项</b></div>
+    <div class="kv"><span class="k">预计训练总时长</span><b>{{plan.missing.length?fmtDur(plan.total_seconds):'—'}}</b></div>
+    <table><tr><th>技能</th><th>级</th><th>时长</th></tr>
+     <tr v-for="r in plan.requirements" :key="r.tid">
+      <td :class="{m:r.ok}">{{r.name}}</td>
+      <td :class="r.ok?'g':'r'">{{r.current}}/{{r.required}}</td>
+      <td>{{r.ok?'✓':fmtDur(r.seconds)}}</td></tr>
+    </table>
+    <div class="m" style="margin-top:4px;font-size:12px">时长按 主属性+副属性/2 估算，未计入已有技能点与属性重映射</div>
+   </template>
+   <div class="m" v-else>先在左侧选一艘舰船，即可计算技能缺口</div>
+   <h4 style="margin:10px 0 4px;font-weight:400;color:var(--m)">当前训练队列</h4>
+   <div class="m" v-if="plan.queue_error">{{plan.queue_error}}</div>
+   <div class="m" v-else-if="!plan.queue||!plan.queue.length">队列为空</div>
+   <table v-else><tr><th>技能</th><th>到</th><th>剩余</th></tr>
+    <tr v-for="q in plan.queue" :key="q.position"><td>{{q.name}}</td><td>{{q.finished_level}}</td><td>{{fmtDur(remain(q.finish_date))}}</td></tr>
+   </table>
+  </template>
+ </div>
+ <div class="rpad" v-else-if="sim">
   <template v-if="rt==='res'">
    <div class="gauge"><span>PG</span><div class="bar"><i :class="over('pg')" :style="{width:pct(res.pg)+'%'}"></i></div><span>{{n(res.pg.used)}}/{{n(res.pg.cap)}}</span></div>
    <div class="gauge"><span>CPU</span><div class="bar"><i :class="over('cpu')" :style="{width:pct(res.cpu)+'%'}"></i></div><span>{{n(res.cpu.used)}}/{{n(res.cpu.cap)}}</span></div>
@@ -248,6 +286,7 @@ th{color:var(--m);font-weight:400;background:var(--p2)} td:first-child,th:first-
    <table><tr><th>武器</th><th>DPS</th><th>弹药</th></tr>
     <tr v-for="w in sim.firepower.weapons" :key="w.tid+w.charge"><td>{{w.name}} <span class="m" v-if="w.qty>1">×{{w.qty}}</span></td><td>{{w.dps}}</td><td>{{w.charge||'—'}}</td></tr>
    </table>
+   <div class="m" style="font-size:12px;margin-top:4px" v-if="sim.firepower.weapons.length">每门武器的弹药可在上方高槽行内下拉框中逐门指定</div>
   </template>
   <template v-if="rt==='cap'">
    <div class="kv"><span class="k">容量</span><b>{{n(sim.capacitor.capacity)}} GJ</b></div>
@@ -292,5 +331,6 @@ th{color:var(--m);font-weight:400;background:var(--p2)} td:first-child,th:first-
   <div class="m" style="margin-top:6px" v-if="!charId">保存到 EVE 需选择角色并授权 write scope</div></div>
 </div>
 <script src="/static/vendor/vue.global.prod.js"></script>
-<script src="/static/app.js?v=54"></script>
+<script src="/static/util.js?v={{ASSET_VERSION}}"></script>
+<script src="/static/app.js?v={{ASSET_VERSION}}"></script>
 </body></html>

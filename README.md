@@ -12,14 +12,17 @@ nohup python3 webapp.py --port 8090 --host 0.0.0.0 > data/webapp.log 2>&1 &
 
 前置数据（自动准备）：
 - `python3 build_index.py` —— 从 SDE zip 构建 `data/staticdata.db`（默认复用 `/root/eve_esi/sde.zip`）
-- 角色 token：复用 `~/.eve-skill-planner/tokens/<cid>.json`；无 token 时点「授权角色」走 EVE SSO
+- 角色 token：复用 `~/.eve-skill-planner/tokens/<cid>.json`；无 token 时点页头「登录」走 EVE SSO，
+  已授权后页头显示角色名、ISK 与「退出登录」（**只注销当前角色**：删其 token 并尽力在 EVE 侧吊销）。
+  退出后直接回到未登录态（「登录」按钮），**不会自动切到其它角色**——其余角色的 token 仍留在服务端，
+  点「登录」重新授权即可（回调带 `?cid=`，多账号时只会选中刚授权的那个）
 
 ## 功能
 
 - **三数据源**：选舰船+物品搭建 / ESI 读取已保存装配 / 粘贴 EFT
 - **pyfa 三栏界面**：左栏（船体与装配/装备/弹药 标签页 + 搜索 + 装配列表 + 装配舰船/另存为/浏览/上传），
   中央（舰船渲染图 + 高/中/低/改槽位 + 货舱/机库 + 模拟历史/保存状态），
-  右栏（资源/抗性/火力/电容/目标/航行 标签页 + ISK 余额）
+  右栏（资源/抗性/火力/电容/目标/航行/技能 标签页 + ISK 余额）
 - **左栏分组浏览**：舰船按 **舰种 → 种族** 两级展开（种族四大帝国固定在前，势力/昇威/三神裔等随后，
   未标注 raceID 的归入「其他」），配种族筛选按钮；装备按 槽位、弹药按 家族 → 组 展开
 - **左栏点击语义**：点**舰船名** = 换用该船体并**清空全部槽位**（从零开始搭）；点其下的**装配方案**
@@ -28,6 +31,12 @@ nohup python3 webapp.py --port 8090 --host 0.0.0.0 > data/webapp.log 2>&1 &
   左/中/右三栏分别 `overflow-y:auto`；滚任一侧栏都不会带动中间装配界面，也不会出现整页滚动条，
   左栏底部（装配舰船/另存为/上传 EFT）常驻可见（窗口高度 320px 时同样成立）
 - **技能加成**：ESI `read_skills` 实时等级参与计算（两段式 dogma 引擎）
+- **技能规划**（右栏「技能」）：按当前角色技能算「这艘船 + 这套装配」还缺哪些技能、
+  各缺几级、预计训练时长；需求技能递归展开前置（舰船 → 战列巡洋舰操作 → 飞船操控学…）
+  并按「前置优先」排序，同时显示 ESI 训练队列（需求 `esi-skills.read_skillqueue.v1`，
+  缺该授权时只在该面板提示，不影响其余功能）
+- **逐门武器弹药**：高槽每门武器的行内下拉框可显式指定弹药（默认「自动」= 按装填尺寸
+  attr 128 自动配弹）；尺寸不符或该弹药不在装配里时自动回退，不会报错
 - **存档**：本地（SQLite）+ 写回 EVE（需 `esi-fittings.write_fittings.v1`，需重新授权）
 - 物品详情：点击任意物品查看属性表/需求技能/舰船特性
 
@@ -49,6 +58,15 @@ nohup python3 webapp.py --port 8090 --host 0.0.0.0 > data/webapp.log 2>&1 &
 - 推进器特殊处理（moduleBonus 效果 6730/6731）：速度×(1+attr20/100)、
   MWD 质量 +500t（5MN）/惯性 ×1.125/信号 ×1.5
 
+### 技能规划（engine/skillplan.py）
+
+- 需求技能：`requiredSkill1..5`(attr 182-186) 配 `requiredSkill*Level`(277/278/279/1286/1287)，
+  递归展开前置技能（技能自身也带 requiredSkill*），同技能取「所需最高等级」
+- 训练时间：`SP(L) = 250 × rank × 2^(2.5L − 2.5)`（rank = attr 275 `skillTimeConstant`），
+  速率 = `主属性 + 副属性/2` SP/分钟（属性取 ESI `attributes` 的 base+implant 有效值）
+- 输出按 Kahn 拓扑排序，保证计划自上而下可依次训练；未达标项才计入时长
+- 仅按「从 0 级开始」估算，不含角色已有的技能点进度与属性重映射
+
 ### 已知口径差异（与游戏「当前激活」面板不同，pyfa 风格）
 - 电容消耗按「全部启用模块」估算（游戏只计当前激活）
 - 速度/质量按所有推进器同时生效计算
@@ -60,13 +78,30 @@ nohup python3 webapp.py --port 8090 --host 0.0.0.0 > data/webapp.log 2>&1 &
 GET  /api/search?q=&cat=        物品搜索（6 舰船 /7 装备 /8 弹药）
 GET  /api/ships  /api/groups    舰船列表（含 group/race）/ 舰船组
 GET  /api/item/<tid>            物品详情（属性/需求技能/特性）
-POST /api/simulate              模拟 {ship_tid, items:[[tid,qty]], skills}
+POST /api/simulate              模拟 {ship_tid, items:[[tid,qty]], skills, charges:{武器tid:弹药tid}}
 POST /api/eft/simulate          EFT 文本模拟
+POST /api/skillplan             技能计划 {cid, ship_tid, items, skills?}
 GET  /api/characters            已授权角色
-GET  /api/characters/<cid>/skills|wallet|fittings
+POST /api/logout                退出登录：{cid} 注销该角色（前端只注销当前角色，退出后停在未登录态）/ {all:true} 注销全部（删本地 token + 尽力吊销 SSO 令牌）
+GET  /api/characters/<cid>/skills|wallet|fittings|attributes|skillqueue
 POST /api/characters/<cid>/fittings/save   写回 EVE
 GET/POST/DELETE /api/local/fittings        本地存档
 GET  /api/auth/start  →  EVE SSO → nginx /api/auth/callback → /callback/
+```
+
+## 前端
+
+无构建步骤：`static/index.html` + `static/util.js`（纯函数与 API 封装）+ `static/app.js`（Vue 单文件 setup）。
+页内用 `{{ASSET_VERSION}}` 占位，由 `webapp.py` 在渲染 `/` 时按 `static/` 下文件的
+(路径, mtime, 大小) 摘要替换 —— **改动任意静态资源后版本号自动变化，无需手工改 `app.js?v=NN`**。
+
+## 测试
+
+```bash
+python3 -m pytest tests/ -q     # 引擎数值锚定 + 技能规划 + 前端静态检查
+python3 tests/test_engine.py    # 单文件直跑（不依赖 pytest，末尾打印通过数）
+python3 tests/test_skillplan.py
+node tests/check_frontend.js    # JS 语法 + Vue 模板编译 + 资源自动版本占位
 ```
 
 ## OAuth 接线
@@ -79,7 +114,7 @@ GET  /api/auth/start  →  EVE SSO → nginx /api/auth/callback → /callback/
   （两者不一致时 EVE 会报 `invalid redirect_uri`，授权直接失败）
 - nginx 负责把该公网地址反代到本应用（见 `/etc/nginx/sites-available/report` 的 80 端口 server）：
   `location = /api/auth/callback → http://127.0.0.1:8090/callback/`
-- 授权范围：fittings 读/写、skills 读、wallet 读；「保存到 EVE」需含 write scope 的
+- 授权范围：fittings 读/写、skills 读、**训练队列读**、wallet 读；「保存到 EVE」需含 write scope 的
   重新授权（EVE SSO 复用旧同意记录时需先在账号设置撤销本应用授权）
 - 环境变量可覆盖配置：`EVE_CLIENT_ID` / `EVE_CLIENT_SECRET` / `EVE_CALLBACK_URL`
   （单字段覆盖，未设置的回退到 `config.json`）；`EVE_SKILL_PLANNER_URL` 覆盖授权成功后

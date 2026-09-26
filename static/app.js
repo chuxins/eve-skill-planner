@@ -1,14 +1,6 @@
-/* 模拟装配前端（Vue 3，setup() 重写版） */
+/* 模拟装配前端（Vue 3，setup() 重写版）
+ * 纯工具函数（API/icon/cacheGet/n/fmtT/fmtDur/remain/attrName）见 static/util.js，需先于本文件加载 */
 const { createApp, ref, computed, watch, onMounted, reactive } = Vue;
-
-const API = (p, o) => fetch(p, o).then(async r => { const d = await r.json().catch(()=>({})); if(!r.ok) throw new Error(d.error||r.status); return d; });
-const icon = tid => `https://images.evetech.net/types/${tid}/icon?size=32`;
-
-function cacheGet(k,ttl){ try{ const v=JSON.parse(localStorage.getItem('spl_'+k)); return v&&Date.now()-v.ts<ttl?v.data:null; }catch(e){return null} }
-function cacheSet(k,d){ try{ localStorage.setItem('spl_'+k, JSON.stringify({ts:Date.now(),data:d})); }catch(e){} }
-
-function n(v){ if(v==null||isNaN(v)) return '—'; let s=Math.ceil(v*10)/10; if(Math.abs(s)>=1e9) return (s/1e9).toFixed(2)+'B'; if(Math.abs(s)>=1e6) return (s/1e6).toFixed(1)+'M'; if(Math.abs(s)>=1e4) return (s/1e4).toFixed(1)+'万'; return String(Math.ceil(v*10)/10); }
-function fmtT(s){ if(!s||s<0) return '—'; return `${String(Math.floor(s/3600)|0).padStart(2,'0')}:${String((Math.floor(s/60)%60)|0).padStart(2,'0')}:${String(Math.floor(s%60)|0).padStart(2,'0')}`; }
 
 createApp({ setup() {
  const lt=ref('hull'), rt=ref('res'), ehp=ref('e');
@@ -22,6 +14,15 @@ createApp({ setup() {
  const slotTab=ref(null), ammoTab=ref('t1'), raceTab=ref(null);
  const modShip=ref(false), modEft=ref(false), modSave=ref(false);
  const expanded=reactive({});
+ // 技能规划（右栏「技能」标签：需求技能缺口 + 训练时间 + 当前训练队列）
+ const plan=ref(null), planErr=ref(''), planLoading=ref(false);
+ let planTimer=null;
+ // 每门武器的显式弹药选择 {武器 tid: 弹药 tid}；空值=按装填尺寸自动配
+ const charges=reactive({});
+ function clearCharges(){ Object.keys(charges).forEach(k=>delete charges[k]); }
+ // 轻提示（退出登录等操作反馈，4 秒自动消失）
+ const toast=ref(''); let toastTimer=null;
+ function say(msg){ toast.value=msg; clearTimeout(toastTimer); toastTimer=setTimeout(()=>{toast.value='';},4000); }
  const leftW=ref(parseInt(localStorage.getItem('spl_lw'))||360), rightW=ref(parseInt(localStorage.getItem('spl_rw'))||355);
  const dragL=ref(false), dragR=ref(false); let dragSide=null, dragX=0, dragW0=0;
  const hasSkills=computed(()=>Object.keys(sk.value).length>0);
@@ -30,6 +31,10 @@ createApp({ setup() {
   return m; });
  const res=computed(()=>sim.value?.resources||{});
  const slots=computed(()=>sim.value?.slots||{high:[],med:[],low:[],rig:[]});
+ // 武器 tid → 火力明细（含装填尺寸/当前弹药），高槽行内弹药下拉框用
+ const weaponMap=computed(()=>{ const m={}; (sim.value?.firepower?.weapons||[]).forEach(w=>{ m[w.tid]=w; }); return m; });
+ // 该武器可选的弹药：机库/货舱里的弹药（cat 8）中装填尺寸(attr 128)匹配者
+ const ammoFor=w=>(sim.value?.other?.charge||[]).filter(c=>!w.charge_size||c.attrs?.[128]===w.charge_size);
  const cap=s=>sim.value?.resources?.slots_cap?.[s]||0;
  const emp=s=>Math.max(0,cap(s)-slots.value[s].length);
  const pct=r=>r?.cap?Math.min(100,r.used/r.cap*100):0;
@@ -57,7 +62,14 @@ createApp({ setup() {
  async function j(p,o){ return API(p,o); }
 
  // 角色
- async function loadChars(){ chars.value=cacheGet('chars',6e5)||[]; try{chars.value=await j('/api/characters'); cacheSet('chars',chars.value)}catch(e){} let cid=charId.value; if(!cid){ cid=cacheGet('cid',864e5)||(chars.value[0]?.id||null); if(cid) charId.value=cid; } charName.value=cacheGet('cname',864e5)||''; const c=chars.value.find(x=>x.id===cid); if(c)charName.value=c.name; if(cid) await onChar(); }
+ // 角色列表：**不自动选中**任何角色（退出登录后保持未登录态，需用户点「登录」授权）
+ async function loadChars(){ chars.value=cacheGet('chars',6e5)||[]; let fresh=false;
+  try{chars.value=await j('/api/characters'); cacheSet('chars',chars.value); fresh=true;}catch(e){}
+  // 当前角色已不在服务端（token 被删/换设备）→ 回到未登录态；请求失败时不改动
+  if(fresh&&charId.value&&!chars.value.some(x=>x.id===charId.value)){ charId.value=null; cacheDel('cid'); cacheDel('cname'); }
+  charName.value=charId.value?(cacheGet('cname',864e5)||''):'';
+  const c=chars.value.find(x=>x.id===charId.value); if(c)charName.value=c.name;
+  if(charId.value) await onChar(); }
  async function onChar(){ sk.value={}; isk.value='—'; esiFits.value={}; if(!charId.value)return; cacheSet('cid',charId.value);
   const c=chars.value.find(x=>x.id===charId.value); if(c){ charName.value=c.name; cacheSet('cname',c.name); }
   const cid=String(charId.value);
@@ -65,8 +77,42 @@ createApp({ setup() {
   if(cached_sk){ sk.value=cached_sk; }else{ try{sk.value=await j(`/api/characters/${charId.value}/skills`); cacheSet('sk_'+cid,sk.value)}catch(e){} }
   if(cached_fits){ const m={}; cached_fits.forEach(x=>m[x.fitting_id]=x); esiFits.value=m; }else{ try{const f=await j(`/api/characters/${charId.value}/fittings`); const m={}; f.forEach(x=>m[x.fitting_id]=x); esiFits.value=m; cacheSet('fits_'+cid,f)}catch(e){} }
   if(cached_isk!=null){ isk.value=cached_isk; }else{ try{isk.value=n(await j(`/api/characters/${charId.value}/wallet`).then(d=>d.balance)); cacheSet('isk_'+cid,isk.value)}catch(e){} }
-  if(sim.value)doSim(); }
+  if(sim.value)doSim();
+  if(rt.value==='skill')loadPlan(); }
  function authStart(){ location.href='/api/auth/start?target=fitting'; }
+ // 退出登录：只注销「当前角色」（后端删其 token 并尽力在 EVE 侧吊销）
+ // 其它已授权角色的 token 仍留在服务端，但**不自动切换**，页面直接回到未登录态
+ async function logout(){ const gone=charId.value; if(!gone) return;
+   const goneName=charName.value||String(gone);
+   let res; try{ res=await j('/api/logout',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({cid:gone})}); }
+   catch(e){ alert('退出登录失败：'+e.message); return; }
+   const skipped=(res.skipped||[])[0];
+   if(skipped){ say(`无法注销 ${skipped.name}：${skipped.note}`); return; }
+   clearCharCache(gone);
+   chars.value=res.characters||[]; cacheSet('chars',chars.value);   // 仅记录，供将来角色切换用
+   charId.value=null; charName.value=''; sk.value={}; isk.value='—'; esiFits.value={};
+   plan.value=null; planErr.value=''; clearCharges();
+   cacheDel('cid'); cacheDel('cname');
+   if(sim.value)doSim(); loadPlan();
+   say(`已退出 ${goneName}`); }
+ // OAuth 回调带的 ?cid=<刚授权角色>：选中它并清掉 query，避免刷新时重复选中
+ function consumeLoginParam(){ const q=new URLSearchParams(location.search); const cid=parseInt(q.get('cid'))||null;
+   if(cid){ charId.value=cid; cacheSet('cid',cid); }
+   if(cid||q.get('ok')) history.replaceState(null,'',location.pathname); }
+
+ // 技能规划：按当前角色技能算「当前舰船+装配」的需求技能缺口与训练时间
+ async function loadPlan(){ if(!charId.value){ plan.value=null; planErr.value=''; return; }
+   planLoading.value=true; planErr.value='';
+   try{
+     if(!shipTid.value){   // 未选舰船：只取训练队列
+       const q=await j(`/api/characters/${charId.value}/skillqueue`);
+       plan.value={ship:null,attributes:{},attributes_error:null,requirements:[],missing:[],total_seconds:0,queue:q.queue||[],queue_error:q.error||null};
+     }else{
+       plan.value=await j('/api/skillplan',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({cid:charId.value,ship_tid:shipTid.value,items:builds.value.map(b=>[b.tid,b.qty]),skills:hasSkills.value?sk.value:undefined})});
+     }
+   }catch(e){ planErr.value=e.message; plan.value=null; }
+   planLoading.value=false; }
+ function queuePlan(){ clearTimeout(planTimer); planTimer=setTimeout(loadPlan,400); }
 
  // 拖拽
  function dragStart(s,e){ dragSide=s; dragX=e.clientX; dragW0=s==='l'?leftW.value:rightW.value; if(s==='l')dragL.value=true; else dragR.value=true;
@@ -77,9 +123,11 @@ createApp({ setup() {
   document.removeEventListener('mousemove',dragMove); document.removeEventListener('mouseup',dragEnd); }
 
  // 舰船
- onMounted(async()=>{ ships.value=await j('/api/ships'); loadChars(); try{const l=await j('/api/local/fittings');fitList.value=l.map(f=>({k:'l'+f.id,name:f.name,ship:f.ship_name,data:f.eft}));}catch(e){} });
+ onMounted(async()=>{ ships.value=await j('/api/ships'); consumeLoginParam(); loadChars(); try{const l=await j('/api/local/fittings');fitList.value=l.map(f=>({k:'l'+f.id,name:f.name,ship:f.ship_name,data:f.eft}));}catch(e){} });
  watch(lt,v=>{ if(v==='mod'||v==='ammo'){ iq.value=''; slotTab.value=null; ammoTab.value='t1'; searchItems(); } });
- function pickShip(tid){ shipTid.value=tid; const s=ships.value.find(x=>x.tid===tid); shipName.value=s?s.name:''; fitName.value=''; builds.value=[]; doSim(); }
+ // 切到「技能」标签时按需拉取计划（避免无谓的 ESI 请求）
+ watch(rt,v=>{ if(v==='skill')loadPlan(); });
+ function pickShip(tid){ shipTid.value=tid; const s=ships.value.find(x=>x.tid===tid); shipName.value=s?s.name:''; fitName.value=''; builds.value=[]; clearCharges(); doSim(); }
 
  // 搜索
  async function searchItems(){ let ps=[]; const st=slotTab.value; if(lt.value==='ammo'){ps.push('cat=8')}else if(st==='drone'){ps.push('cat=18')}else if(st){ps.push('cat=7');ps.push('slot='+st)}else{ps.push('cat=7,18')} if(!iq.value.trim())ps.push('limit=1000'); iResults.value=await j(`/api/search?q=${encodeURIComponent(iq.value.trim())}`+(ps.length?'&'+ps.join('&'):'')); }
@@ -90,11 +138,13 @@ createApp({ setup() {
  function rmItem(it){ builds.value=builds.value.filter(b=>!(b.tid===it.tid&&b.qty===it.qty)); doSim(); }
 
  // 模拟
+ function chargePayload(){ const out={}; Object.keys(charges).forEach(k=>{ if(charges[k])out[k]=charges[k]; }); return out; }
  async function doSim(){ if(!shipTid.value)return; try{
-  sim.value=await j('/api/simulate',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({ship_tid:shipTid.value,items:builds.value.map(b=>[b.tid,b.qty]),skills:sk.value})});
+  sim.value=await j('/api/simulate',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({ship_tid:shipTid.value,items:builds.value.map(b=>[b.tid,b.qty]),skills:sk.value,charges:chargePayload()})});
   builds.value=sim.value.items.map(it=>({tid:it.tid,name:it.name,qty:it.qty}));
+  if(rt.value==='skill')queuePlan();
  }catch(e){alert(e.message)}}
- async function doEft(){ modEft.value=false; try{
+ async function doEft(){ modEft.value=false; clearCharges(); try{
   const r=await j('/api/eft/simulate',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({eft:eftText.value,skills:sk.value})});
   shipTid.value=r.ship.tid; shipName.value=ships.value.find(s=>s.tid===r.ship.tid)?.name||r.ship.name; fitName.value=r.fit_name||''; sim.value=r;
   builds.value=r.items.map(it=>({tid:it.tid,name:it.name,qty:it.qty}));
@@ -102,11 +152,12 @@ createApp({ setup() {
 
  // 装配
  async function loadFit(f){
+  clearCharges();
   if(f.esi){ shipTid.value=f.data.ship_tid; shipName.value=f.data.ship; fitName.value=f.data.name;
    builds.value=[]; doSimFor(f.data.items.map(it=>[it.tid,it.qty])); return; }
   eftText.value=f.data; await doEft(); }
  async function doSimFor(items){ try{
-  sim.value=await j('/api/simulate',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({ship_tid:shipTid.value,items,skills:sk.value})});
+  sim.value=await j('/api/simulate',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({ship_tid:shipTid.value,items,skills:sk.value,charges:chargePayload()})});
   builds.value=sim.value.items.map(it=>({tid:it.tid,name:it.name,qty:it.qty}));
  }catch(e){alert(e.message)}}
 
@@ -121,7 +172,7 @@ createApp({ setup() {
   try{await j(`/api/characters/${charId.value}/fittings/save`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({name:saveName.value.trim()||'模拟装配',items,ship_tid:sim.value.ship.tid})}); modSave.value=false; alert('已保存');}
   catch(e){alert('保存失败: '+e.message)}}
 
- return {lt,rt,ehp,shipTid,shipName,fitName,buildList:builds,sim,sq,sq2,iq,ships,iResults,chars,charId,charName,sk,isk,fitList,esiFits,eftText,saveName,slotTab,ammoTab,raceTab,modShip,modEft,modSave,expanded,expandedEq,eqGroups,shownGroups,leftW,rightW,dragL,dragR,
+ return {lt,rt,ehp,shipTid,shipName,fitName,buildList:builds,sim,sq,sq2,iq,ships,iResults,chars,charId,charName,sk,isk,fitList,esiFits,eftText,saveName,slotTab,ammoTab,raceTab,modShip,modEft,modSave,expanded,expandedEq,eqGroups,shownGroups,leftW,rightW,dragL,dragR,plan,planErr,planLoading,charges,weaponMap,ammoFor,
   hasSkills,res,slots,cap,emp,pct,over,shipRaces,shipTree,shownShips,shipCount,fittingsByShip,filterShips2,setRaceTab,
-  onChar,authStart,dragStart,pickShip,searchItems,setSlotTab,setAmmoTab,addItem,rmItem,doSim,doEft,loadFit,saveLocal,saveEsi,icon,n,fmtT};
+  onChar,authStart,logout,toast,consumeLoginParam,dragStart,pickShip,searchItems,setSlotTab,setAmmoTab,addItem,rmItem,doSim,doEft,loadFit,saveLocal,saveEsi,icon,n,fmtT,fmtDur,remain,attrName,loadPlan};
 }}).mount('#app');
