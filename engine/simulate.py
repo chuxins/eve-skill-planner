@@ -141,10 +141,12 @@ class _Target:
 class Fit:
     """一次装配模拟的求解器。"""
 
-    def __init__(self, sde, ship_tid, modules, skills=None):
+    def __init__(self, sde, ship_tid, modules, skills=None, charges=None):
         """
         modules: [(tid, qty)] —— 槽位与机库物品（模块/弹药/无人机/植入体…）。
         skills:  {skill_tid: level}
+        charges: {weapon_tid: charge_tid} —— 每门武器显式指定弹药；
+                 未指定或与武器装填尺寸不符时回退为按尺寸自动配弹。
         """
         self.sde = sde
         self.ship_tid = ship_tid
@@ -156,6 +158,7 @@ class Fit:
         self.mod_attrs = {tid: dict(sde.type_attrs.get(tid, {})) for tid, _ in modules}
         self.items = list(modules)
         self.skills = skills or {}
+        self.charges = {int(k): int(v) for k, v in (charges or {}).items() if v}
 
     # ------------------------------------------------------------ 技能
     def _skill_bonus_map(self):
@@ -492,8 +495,17 @@ class Fit:
         used_charges = set()
 
         def pick_charge(weapon, charges, used):
-            """按装填尺寸(attr 128)给武器配弹药；尺寸不符不配。"""
+            """给武器配弹药：优先 UI 显式指定的（self.charges），否则按装填尺寸
+            (attr 128) 自动择一；尺寸不符不配。显式指定不占用自动配弹名额，
+            允许多门同型武器共用同一弹药堆。"""
             size = weapon["attrs"].get(A_CHARGE_SIZE)
+            want = self.charges.get(weapon["tid"])
+            if want:
+                for c in charges:
+                    if c["tid"] != want:
+                        continue
+                    if size is None or c["attrs"].get(A_CHARGE_SIZE) == size:
+                        return c
             for i, c in enumerate(charges):
                 if i in used:
                     continue
@@ -537,6 +549,9 @@ class Fit:
                 "tracking": a.get(160, 0.0), "signature_res": a.get(A_SIG_RES, 0.0),
                 "cap_use": round(a.get(A_NEED, 0.0), 1),
                 "charge": charge["name"] if charge else None,
+                "charge_tid": charge["tid"] if charge else None,
+                "charge_size": a.get(A_CHARGE_SIZE),
+                "explicit_charge": bool(charge and charge["tid"] == self.charges.get(weapon["tid"])),
             })
 
         # 无人机（默认全部拉满）
@@ -576,6 +591,6 @@ class Fit:
         }
 
 
-def simulate(sde, ship_tid, modules, skills=None):
-    """便捷入口：sde 为 StaticData 实例。"""
-    return Fit(sde, ship_tid, modules, skills).solve()
+def simulate(sde, ship_tid, modules, skills=None, charges=None):
+    """便捷入口：sde 为 StaticData 实例；charges=每门武器的显式弹药选择。"""
+    return Fit(sde, ship_tid, modules, skills, charges).solve()

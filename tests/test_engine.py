@@ -75,6 +75,47 @@ def test_executor_prop_mods():
     assert approx(r["nav"]["align"], expect_align, 0.01)
 
 
+PULSE2 = 3520       # 重型脉冲激光器 II（装填尺寸 2 = 中型）
+MULTI_M = 254       # 多频晶体 M（高伤）
+RADIO_M = 247       # 射频晶体 M（低伤远距）
+MULTI_S = 246       # 多频晶体 S（装填尺寸 1，用于尺寸不符回退）
+
+
+def test_charge_auto_and_explicit():
+    """弹药：未指定时按装填尺寸自动配，指定时以指定者为准。"""
+    base = [(PULSE2, 1), (MULTI_M, 100), (RADIO_M, 100)]
+    auto = simulate(SDE, PROPHECY, base)
+    w = auto["firepower"]["weapons"][0]
+    assert w["charge_size"] == 2.0                      # 炮的装填尺寸
+    assert w["charge"] == "多频晶体 M" and w["charge_tid"] == MULTI_M
+    assert w["explicit_charge"] is False
+    assert auto["firepower"]["turret"]["dps"] == 16.5
+    r = simulate(SDE, PROPHECY, base, None, {PULSE2: RADIO_M})   # 显式换成射频晶体
+    w2 = r["firepower"]["weapons"][0]
+    assert w2["charge"] == "射频晶体 M" and w2["charge_tid"] == RADIO_M
+    assert w2["explicit_charge"] is True
+    assert r["firepower"]["turret"]["dps"] == 6.9
+    assert r["firepower"]["turret"]["dps"] < auto["firepower"]["turret"]["dps"]
+
+
+def test_charge_falls_back_when_invalid():
+    """显式弹药尺寸不符或不在装配里 → 回退自动配弹，不报错。"""
+    r = simulate(SDE, PROPHECY, [(PULSE2, 1), (MULTI_M, 100)], None, {PULSE2: MULTI_S})
+    w = r["firepower"]["weapons"][0]
+    assert w["charge"] == "多频晶体 M" and w["explicit_charge"] is False
+    r2 = simulate(SDE, PROPHECY, [(PULSE2, 1), (MULTI_M, 100)], None, {PULSE2: 99999999})
+    w2 = r2["firepower"]["weapons"][0]
+    assert w2["charge"] == "多频晶体 M" and w2["explicit_charge"] is False
+
+
+def test_charge_explicit_ignores_qty_gate():
+    """自动配弹要求弹药数量≥武器数量；显式指定不做该限制（1 发也能打）。"""
+    items = [(PULSE2, 1), (RADIO_M, 1)]
+    r = simulate(SDE, PROPHECY, items, None, {PULSE2: RADIO_M})
+    assert r["firepower"]["weapons"][0]["charge"] == "射频晶体 M"
+    assert r["firepower"]["weapons"][0]["explicit_charge"] is True
+
+
 def test_eft_Parser():
     from engine.eft import parse_eft, render_eft
     ship, fit, items = parse_eft("[先知级, 测试]\n损伤控制 II\n损伤控制 II\n[Empty Low slot]\n散弹S x2\n")
