@@ -30,6 +30,13 @@ def test_logout_flow_behavior():
     assert proc.returncode == 0, proc.stdout + proc.stderr
 
 
+def test_ammo_select_behavior():
+    """弹药下拉框：列出全部兼容弹药（不限货舱）、按弹药组分组、选中即提交（见 tests/ammoselect.js）。"""
+    proc = subprocess.run(["node", os.path.join(ROOT, "tests", "ammoselect.js")],
+                          capture_output=True, text=True, cwd=ROOT)
+    assert proc.returncode == 0, proc.stdout + proc.stderr
+
+
 def test_index_injects_asset_version_and_favicon():
     """首页渲染时替换 {{ASSET_VERSION}}，且 favicon/静态资源可访问。"""
     import webapp

@@ -79,6 +79,7 @@ PULSE2 = 3520       # 重型脉冲激光器 II（装填尺寸 2 = 中型）
 MULTI_M = 254       # 多频晶体 M（高伤）
 RADIO_M = 247       # 射频晶体 M（低伤远距）
 MULTI_S = 246       # 多频晶体 S（装填尺寸 1，用于尺寸不符回退）
+HYBRID_M = 223      # 铁质轨道弹 M（混合弹药：尺寸同为 2 但弹药组不符，也须回退）
 
 
 def test_charge_auto_and_explicit():
@@ -98,14 +99,47 @@ def test_charge_auto_and_explicit():
     assert r["firepower"]["turret"]["dps"] < auto["firepower"]["turret"]["dps"]
 
 
-def test_charge_falls_back_when_invalid():
-    """显式弹药尺寸不符或不在装配里 → 回退自动配弹，不报错。"""
-    r = simulate(SDE, PROPHECY, [(PULSE2, 1), (MULTI_M, 100)], None, {PULSE2: MULTI_S})
+def test_charge_explicit_outside_cargo():
+    """下拉框列出「全部兼容弹药」→ 选中货舱里没有的弹药也要生效（按 SDE 算伤害）。"""
+    items = [(PULSE2, 1), (MULTI_M, 100)]
+    base = simulate(SDE, PROPHECY, items)
+    r = simulate(SDE, PROPHECY, items, None, {PULSE2: RADIO_M})   # 射频晶体不在装配里
     w = r["firepower"]["weapons"][0]
-    assert w["charge"] == "多频晶体 M" and w["explicit_charge"] is False
-    r2 = simulate(SDE, PROPHECY, [(PULSE2, 1), (MULTI_M, 100)], None, {PULSE2: 99999999})
-    w2 = r2["firepower"]["weapons"][0]
-    assert w2["charge"] == "多频晶体 M" and w2["explicit_charge"] is False
+    assert all(it["tid"] != RADIO_M for it in r["items"])          # 确实没装进货舱
+    assert w["charge"] == "射频晶体 M" and w["charge_tid"] == RADIO_M
+    assert w["explicit_charge"] is True
+    assert r["firepower"]["turret"]["dps"] == 6.9                  # 与货舱里有同款弹药一致
+    assert r["resources"]["cargo"]["used"] == base["resources"]["cargo"]["used"]  # 不占货舱
+
+
+def test_charge_falls_back_when_invalid():
+    """显式弹药尺寸不符 / 弹药组不符 / 类型不存在 → 回退自动配弹，不报错。"""
+    items = [(PULSE2, 1), (MULTI_M, 100)]
+    for bad in (MULTI_S, HYBRID_M, 99999999):
+        r = simulate(SDE, PROPHECY, items, None, {PULSE2: bad})
+        w = r["firepower"]["weapons"][0]
+        assert w["charge"] == "多频晶体 M" and w["explicit_charge"] is False
+
+
+def test_auto_charge_prefers_matching_group():
+    """货舱里混有尺寸相同的别家族弹药 → 自动配弹优先弹药组匹配者（不受顺序影响）。"""
+    r = simulate(SDE, PROPHECY, [(PULSE2, 1), (HYBRID_M, 100), (MULTI_M, 100)])
+    w = r["firepower"]["weapons"][0]
+    assert w["charge_tid"] == MULTI_M and w["explicit_charge"] is False
+
+
+def test_charges_for_weapon_lists_all_compatible():
+    """SDE 兼容弹药表：尺寸一致、弹药组属于武器 chargeGroup1..5、件件有伤害。"""
+    lst = SDE.charges_for(PULSE2)
+    tids = {c["tid"] for c in lst}
+    assert len(lst) >= 40                                        # 含 T1/T2/势力，远多于货舱所见
+    assert {MULTI_M, RADIO_M} <= tids
+    assert HYBRID_M not in tids and MULTI_S not in tids           # 弹药组/尺寸不符
+    assert all(c["size"] == 2 and sum(c["damage"]) > 0 for c in lst)   # 脚本类无伤害 → 不在表内
+    assert {c["group"] for c in lst} == {"频率晶体", "高级脉冲激光晶体"}
+    assert SDE.charges_for(PROPHECY) == []                        # 舰船没有可装弹药
+    assert SDE.charge_compatible(PULSE2, RADIO_M) is True
+    assert SDE.charge_compatible(PULSE2, HYBRID_M) is False
 
 
 def test_charge_explicit_ignores_qty_gate():

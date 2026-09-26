@@ -16,7 +16,7 @@
 
 import math
 
-from .data import StaticData
+from .data import A_CHARGE_GROUPS, StaticData
 
 CAT_SHIP, CAT_MODULE, CAT_CHARGE, CAT_DRONE, CAT_IMPLANT, CAT_FIGHTER, CAT_SKILL = (
     6, 7, 8, 18, 20, 87, 16)
@@ -488,6 +488,28 @@ class Fit:
         }
 
     # ------------------------------------------------------------ 火力
+    def _charge_item(self, tid):
+        """SDE 里的弹药类型 → 与 other["charge"] 同构的条目。
+
+        UI 下拉框列出**全部兼容弹药**（不限于货舱），因此用户可能选中货舱里没有的
+        弹药：此时按 SDE 数据算伤害；qty=0 仅表示它不占货舱数量/容积。
+        """
+        t = self.sde.types.get(tid)
+        if not t or t.get("category_id") != CAT_CHARGE:
+            return None
+        return {"tid": tid, "name": self.sde.name(tid), "qty": 0, "slot": None,
+                "category_id": CAT_CHARGE, "group_id": t.get("group_id"),
+                "attrs": dict(self.sde.type_attrs.get(tid, {}))}
+
+    def _charge_fits(self, weapon, charge):
+        """弹药能否装进该武器：装填尺寸(attr 128)一致 + 弹药组属于 chargeGroup1..5。"""
+        a = weapon["attrs"]
+        size = a.get(A_CHARGE_SIZE)
+        if size is not None and charge["attrs"].get(A_CHARGE_SIZE) != size:
+            return False
+        allowed = {a[g] for g in A_CHARGE_GROUPS if a.get(g)}
+        return not allowed or charge.get("group_id") in allowed
+
     def _firepower(self, slots, other):
         s = self.sde
         detail = []
@@ -495,22 +517,32 @@ class Fit:
         used_charges = set()
 
         def pick_charge(weapon, charges, used):
-            """给武器配弹药：优先 UI 显式指定的（self.charges），否则按装填尺寸
-            (attr 128) 自动择一；尺寸不符不配。显式指定不占用自动配弹名额，
-            允许多门同型武器共用同一弹药堆。"""
-            size = weapon["attrs"].get(A_CHARGE_SIZE)
+            """给武器配弹药：优先 UI 显式指定的（self.charges）——货舱里有就用那堆，
+            没有则按 SDE 数据算（下拉框列出的是全部兼容弹药）；都不符合才自动配：
+            先选弹药组匹配的，再退化为仅装填尺寸匹配（旧行为，兼容老装配）。
+            显式指定不占用自动配弹名额，允许多门同型武器共用同一弹药堆。"""
             want = self.charges.get(weapon["tid"])
             if want:
                 for c in charges:
-                    if c["tid"] != want:
-                        continue
-                    if size is None or c["attrs"].get(A_CHARGE_SIZE) == size:
+                    if c["tid"] == want and self._charge_fits(weapon, c):
                         return c
+                c = self._charge_item(want)
+                if c and self._charge_fits(weapon, c):
+                    return c
+            size = weapon["attrs"].get(A_CHARGE_SIZE)
+            # ① 自动配弹优先「弹药组也匹配」者（尺寸相同但家族不同的弹药不再被误选）
+            if size is not None:
+                for i, c in enumerate(charges):
+                    if i in used or c["qty"] < weapon["qty"]:
+                        continue
+                    if self._charge_fits(weapon, c):
+                        used.add(i)
+                        return c
+            # ② 退化：仅按装填尺寸匹配（旧行为；未标注装填尺寸的武器不自动配弹）
             for i, c in enumerate(charges):
-                if i in used:
+                if i in used or c["qty"] < weapon["qty"]:
                     continue
-                if size is not None and c["attrs"].get(A_CHARGE_SIZE) == size \
-                        and c["qty"] >= weapon["qty"]:
+                if size is not None and c["attrs"].get(A_CHARGE_SIZE) == size:
                     used.add(i)
                     return c
             return None

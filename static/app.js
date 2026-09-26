@@ -33,8 +33,21 @@ createApp({ setup() {
  const slots=computed(()=>sim.value?.slots||{high:[],med:[],low:[],rig:[]});
  // 武器 tid → 火力明细（含装填尺寸/当前弹药），高槽行内弹药下拉框用
  const weaponMap=computed(()=>{ const m={}; (sim.value?.firepower?.weapons||[]).forEach(w=>{ m[w.tid]=w; }); return m; });
- // 该武器可选的弹药：机库/货舱里的弹药（cat 8）中装填尺寸(attr 128)匹配者
- const ammoFor=w=>(sim.value?.other?.charge||[]).filter(c=>!w.charge_size||c.attrs?.[128]===w.charge_size);
+ // 该武器可选的弹药：后端按 SDE 算出的**全部兼容弹药**（装填尺寸 + 允许弹药组），
+ // 不限于货舱/机库已有的；按武器 tid 缓存，避免重复请求
+ const ammoMap=ref({}), ammoLoading=reactive({});
+ async function loadAmmoFor(tid){ if(tid==null||ammoMap.value[tid]||ammoLoading[tid])return; ammoLoading[tid]=true;
+  try{ const list=await j(`/api/weapon/${tid}/charges`); ammoMap.value={...ammoMap.value,[tid]:list}; }
+  catch(e){ ammoMap.value={...ammoMap.value,[tid]:[]}; }
+  ammoLoading[tid]=false; }
+ function loadAmmoAll(){ (sim.value?.firepower?.weapons||[]).forEach(w=>loadAmmoFor(w.tid)); }
+ function ammoFor(w){ return (w&&ammoMap.value[w.tid])||[]; }
+ // 下拉选项按弹药组（频率晶体/混合弹药/轻型导弹…）分组，便于在同组内比较
+ function ammoGroupsFor(w){ const m={}; ammoFor(w).forEach(c=>{ const k=c.group||'其他'; (m[k]=m[k]||[]).push(c); });
+  return Object.keys(m).sort((a,b)=>a.localeCompare(b,'zh')).map(k=>({label:k,items:m[k]})); }
+ // 货舱里已有的弹药（在选项里标注「货舱」，其余选中后按 SDE 数据算，不需先装进货舱）
+ const cargoAmmo=computed(()=>new Set((sim.value?.other?.charge||[]).map(c=>c.tid)));
+ function ammoLabel(c){ return c.name+(c.meta_label?`（${c.meta_label}）`:'')+(cargoAmmo.value.has(c.tid)?' · 货舱':''); }
  const cap=s=>sim.value?.resources?.slots_cap?.[s]||0;
  const emp=s=>Math.max(0,cap(s)-slots.value[s].length);
  const pct=r=>r?.cap?Math.min(100,r.used/r.cap*100):0;
@@ -142,12 +155,14 @@ createApp({ setup() {
  async function doSim(){ if(!shipTid.value)return; try{
   sim.value=await j('/api/simulate',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({ship_tid:shipTid.value,items:builds.value.map(b=>[b.tid,b.qty]),skills:sk.value,charges:chargePayload()})});
   builds.value=sim.value.items.map(it=>({tid:it.tid,name:it.name,qty:it.qty}));
+  loadAmmoAll();
   if(rt.value==='skill')queuePlan();
  }catch(e){alert(e.message)}}
  async function doEft(){ modEft.value=false; clearCharges(); try{
   const r=await j('/api/eft/simulate',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({eft:eftText.value,skills:sk.value})});
   shipTid.value=r.ship.tid; shipName.value=ships.value.find(s=>s.tid===r.ship.tid)?.name||r.ship.name; fitName.value=r.fit_name||''; sim.value=r;
   builds.value=r.items.map(it=>({tid:it.tid,name:it.name,qty:it.qty}));
+  loadAmmoAll();
  }catch(e){alert(e.message)} eftText.value=''; }
 
  // 装配
@@ -159,6 +174,7 @@ createApp({ setup() {
  async function doSimFor(items){ try{
   sim.value=await j('/api/simulate',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({ship_tid:shipTid.value,items,skills:sk.value,charges:chargePayload()})});
   builds.value=sim.value.items.map(it=>({tid:it.tid,name:it.name,qty:it.qty}));
+  loadAmmoAll();
  }catch(e){alert(e.message)}}
 
  // 保存
@@ -172,7 +188,7 @@ createApp({ setup() {
   try{await j(`/api/characters/${charId.value}/fittings/save`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({name:saveName.value.trim()||'模拟装配',items,ship_tid:sim.value.ship.tid})}); modSave.value=false; alert('已保存');}
   catch(e){alert('保存失败: '+e.message)}}
 
- return {lt,rt,ehp,shipTid,shipName,fitName,buildList:builds,sim,sq,sq2,iq,ships,iResults,chars,charId,charName,sk,isk,fitList,esiFits,eftText,saveName,slotTab,ammoTab,raceTab,modShip,modEft,modSave,expanded,expandedEq,eqGroups,shownGroups,leftW,rightW,dragL,dragR,plan,planErr,planLoading,charges,weaponMap,ammoFor,
+ return {lt,rt,ehp,shipTid,shipName,fitName,buildList:builds,sim,sq,sq2,iq,ships,iResults,chars,charId,charName,sk,isk,fitList,esiFits,eftText,saveName,slotTab,ammoTab,raceTab,modShip,modEft,modSave,expanded,expandedEq,eqGroups,shownGroups,leftW,rightW,dragL,dragR,plan,planErr,planLoading,charges,weaponMap,ammoFor,ammoMap,ammoLoading,ammoGroupsFor,ammoLabel,
   hasSkills,res,slots,cap,emp,pct,over,shipRaces,shipTree,shownShips,shipCount,fittingsByShip,filterShips2,setRaceTab,
   onChar,authStart,logout,toast,consumeLoginParam,dragStart,pickShip,searchItems,setSlotTab,setAmmoTab,addItem,rmItem,doSim,doEft,loadFit,saveLocal,saveEsi,icon,n,fmtT,fmtDur,remain,attrName,loadPlan};
 }}).mount('#app');

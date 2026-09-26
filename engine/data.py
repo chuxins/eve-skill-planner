@@ -23,6 +23,25 @@ def _zh_text(dn):
     return dn.get("zh") or dn.get("en") or ""
 
 
+# 弹药匹配相关属性：武器 → 允许的弹药组 chargeGroup1..5；弹药 → 装填尺寸/伤害
+A_CHARGE_SIZE = 128
+A_CHARGE_GROUPS = (604, 605, 606, 607, 608)
+A_CHARGE_DAMAGE = (114, 116, 117, 118)      # EM / 爆炸 / 动能 / 热能
+CAT_CHARGE = 8
+
+# 弹药 meta 等级 → 展示标签（弹药下拉框在名称后标注）
+META_LABELS = {1: "T1", 2: "T2", 3: "故事线", 4: "势力", 5: "官员", 6: "死亡空间",
+               8: "标准", 14: "T3"}
+
+
+def ammo_family(group_name):
+    """从弹药组名提取家族名：去掉 高级/自动锁定/超大型/势力/建筑 等前缀。"""
+    for pfx in ("高级超大型", "高级", "自动锁定", "势力", "建筑", "超大型"):
+        if group_name.startswith(pfx):
+            return group_name[len(pfx):]
+    return group_name
+
+
 class StaticData:
     """一次性把配置相关的 SDE 数据载入内存（应用启动时构建一次）。"""
 
@@ -82,6 +101,22 @@ class StaticData:
         for tid, aid, val in conn.execute("SELECT type_id,attribute_id,value FROM type_attrs"):
             self.type_attrs.setdefault(tid, {})[aid] = val
 
+        # 弹药索引：已发布、带伤害属性的 cat8 弹药（脚本/电容注电器装料/扫描探针等
+        # 无伤害「弹药」不算可选弹药，天然被排除）。按装填尺寸分桶；发射架类武器没有
+        # 装填尺寸属性(attr 128)，只能按弹药组匹配，故另存全量表 damage_charges。
+        self.damage_charges = []
+        self.charges_by_size = {}
+        for tid, t in self.types.items():
+            if t["category_id"] != CAT_CHARGE or not t["published"]:
+                continue
+            attrs = self.type_attrs.get(tid, {})
+            if not any(attrs.get(a, 0.0) > 0 for a in A_CHARGE_DAMAGE):
+                continue
+            self.damage_charges.append(tid)
+            size = attrs.get(A_CHARGE_SIZE)
+            if size is not None:
+                self.charges_by_size.setdefault(size, []).append(tid)
+
         self.type_effects = {}
         for tid, eid, isdef in conn.execute(
                 "SELECT type_id,effect_id,is_default FROM type_effects"):
@@ -134,3 +169,52 @@ class StaticData:
             if eff.get("offensive") or eff.get("category") == 2:
                 return True
         return False
+
+    # ------------------------------------------------------------ 弹药匹配
+    def charge_compatible(self, weapon_tid, charge_tid):
+        """弹药能否装进该武器：装填尺寸(attr 128)一致 + 弹药组属于 chargeGroup1..5。
+
+        两项武器都没标注时视为不限（老式/特殊武器）；发射架只有弹药组没有装填尺寸，
+        此时只校验弹药组。与 Fit._charge_fits 同一套规则。
+        """
+        w = self.type_attrs.get(weapon_tid, {})
+        size = w.get(A_CHARGE_SIZE)
+        if size is not None and self.type_attrs.get(charge_tid, {}).get(A_CHARGE_SIZE) != size:
+            return False
+        allowed = {w[a] for a in A_CHARGE_GROUPS if w.get(a)}
+        if not allowed:
+            return True
+        t = self.types.get(charge_tid)
+        return t is not None and t["group_id"] in allowed
+
+    def charges_for(self, weapon_tid):
+        """该武器可装填的**全部**弹药（SDE 全量，不限于装配/货舱里已有的）。
+
+        规则：已发布 cat8 弹药 + 有伤害属性（排除脚本/电容注电器装料/扫描探针等）
+        + 弹药组属于武器 chargeGroup1..5 + 装填尺寸与武器一致；发射架类武器没有
+        装填尺寸属性 → 退化为只按弹药组匹配（同理，武器未标注弹药组时只按尺寸）。
+        返回按「弹药组 → meta 等级 → 名称」排序的列表，供 UI 下拉框分组展示。
+        """
+        w = self.type_attrs.get(weapon_tid, {})
+        size = w.get(A_CHARGE_SIZE)
+        allowed = {w[a] for a in A_CHARGE_GROUPS if w.get(a)}
+        if size is None and not allowed:
+            return []                       # 既无装填尺寸也无弹药组 → 无从判断
+        pool = self.charges_by_size.get(size, []) if size is not None else self.damage_charges
+        out = []
+        for tid in pool:
+            t = self.types[tid]
+            if allowed and t["group_id"] not in allowed:
+                continue
+            attrs = self.type_attrs.get(tid, {})
+            group = self.group_name(t["group_id"])
+            out.append({
+                "tid": tid, "name": t["name"], "name_en": t["name_en"],
+                "group_id": t["group_id"], "group": group,
+                "family": ammo_family(group), "meta": t.get("meta_group_id"),
+                "meta_label": META_LABELS.get(t.get("meta_group_id"), ""),
+                "size": attrs.get(A_CHARGE_SIZE),
+                "damage": [round(attrs.get(a, 0.0), 1) for a in A_CHARGE_DAMAGE],
+            })
+        out.sort(key=lambda c: (c["group"], c["meta"] or 0, c["name"]))
+        return out

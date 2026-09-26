@@ -135,6 +135,25 @@ check('loadChars 不自动选中角色', () => {
   if (!/consumeLoginParam\(\)/.test(read('app.js'))) throw new Error('未消费登录回调的 ?cid');
 });
 
+check('弹药下拉框列出全部兼容弹药（不限货舱）', () => {
+  const app = read('app.js'), html = read('index.html');
+  const body = fnBody('ammoFor');
+  if (/other\??\.\s*charge/.test(body))
+    throw new Error('ammoFor 仍只取货舱/装配里的弹药：' + body);
+  if (!/ammoMap/.test(body)) throw new Error('ammoFor 未使用后端全量兼容弹药表 ammoMap');
+  if (!/\/api\/weapon\/\$\{tid\}\/charges/.test(app))
+    throw new Error('未请求 /api/weapon/<tid>/charges（该武器全部兼容弹药）');
+  if (!/function loadAmmoAll\(/.test(app)) throw new Error('缺少 loadAmmoAll');
+  if (!/loadAmmoAll\(\)/.test(app.replace(/function loadAmmoAll\(\)[^\n]*/, '')))
+    throw new Error('loadAmmoAll 未在模拟后被调用（下拉框会一直空）');
+  if (!/optgroup/.test(html)) throw new Error('下拉框未按弹药组分组（optgroup）');
+  if (!/ammoLabel\(c\)/.test(html)) throw new Error('下拉选项未标注 T1/T2/势力/货舱');
+  const ret = app.slice(app.lastIndexOf('return {'));
+  for (const name of ['ammoFor', 'ammoGroupsFor', 'ammoLabel', 'ammoLoading'])
+    if (!new RegExp('[,\\s{]' + name + '[,\\s}]').test(ret))
+      throw new Error('setup() 未返回 ' + name);
+});
+
 if (failures.length) {
   console.log('\n' + failures.length + ' 项失败');
   process.exit(1);

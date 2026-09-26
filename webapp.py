@@ -2,6 +2,7 @@
 
 - 静态前端：/（static/index.html，注入静态资源自动版本号）
 - 模拟接口：/api/simulate、/api/eft/simulate、/api/search、/api/ships、/api/item/<tid>
+- 弹药列表：/api/weapon/<tid>/charges（该武器全部兼容弹药，不限于货舱）
 - 技能规划：/api/skillplan、/api/characters/<cid>/skillqueue
 - ESI 接口：/api/characters、/api/characters/<cid>/fittings|skills|wallet|attributes
 - OAuth：/api/auth/start → EVE SSO（本应用独立凭据 + PKCE）→ nginx 反代 /api/auth/callback → /callback/
@@ -22,7 +23,7 @@ import appdb
 import config
 import esi
 import oauth
-from engine.data import StaticData
+from engine.data import StaticData, ammo_family
 from engine.eft import parse_eft, render_eft
 from engine.simulate import simulate, SimulationError
 from engine.skillplan import build_plan
@@ -81,14 +82,6 @@ def static_files(name):
 
 
 # ---------------------------------------------------------------- 搜索
-def _ammo_family(gn):
-    """从弹药组名提取家族名：去掉 高级/自动锁定/超大型/势力/建筑 等前缀。"""
-    for pfx in ("高级超大型", "高级", "自动锁定", "势力", "建筑", "超大型"):
-        if gn.startswith(pfx):
-            return gn[len(pfx):]
-    return gn
-
-
 def _search_types(q, cats=None, slot=None, limit=50):
     q = q.strip().lower()
     out = []
@@ -109,7 +102,7 @@ def _search_types(q, cats=None, slot=None, limit=50):
                     "group_id": t["group_id"], "category_id": t["category_id"],
                     "group": sde.group_name(t["group_id"]),
                     "slot": s, "meta": t.get("meta_group_id"),
-                    "family": _ammo_family(sde.group_name(t["group_id"])),
+                    "family": ammo_family(sde.group_name(t["group_id"])),
                     "pg": attrs.get(30), "cpu": attrs.get(50)})
         if len(out) >= limit:
             break
@@ -126,6 +119,22 @@ def api_search():
     slot = request.args.get("slot") or None
     limit = min(int(request.args.get("limit", 50)), 1000)
     return jsonify(_search_types(q, cat_ids, slot, limit))
+
+
+# 逐门武器的可选弹药（SDE 全量兼容弹药，按武器 tid 缓存；SDE 运行期不变）
+_weapon_charges_cache = {}
+
+
+@app.route("/api/weapon/<int:tid>/charges")
+def api_weapon_charges(tid):
+    """该武器可装填的**全部**弹药（不限于装配/货舱里已有的），供弹药下拉框。
+
+    匹配规则见 StaticData.charges_for：装填尺寸(attr 128) 一致 + 弹药组属于
+    武器 chargeGroup1..5(attr 604-608)，且排除脚本/电容装料等无伤害「弹药」。
+    """
+    if tid not in _weapon_charges_cache:
+        _weapon_charges_cache[tid] = sde.charges_for(tid)
+    return jsonify(_weapon_charges_cache[tid])
 
 
 @app.route("/api/ships")

@@ -35,8 +35,11 @@ nohup python3 webapp.py --port 8090 --host 0.0.0.0 > data/webapp.log 2>&1 &
   各缺几级、预计训练时长；需求技能递归展开前置（舰船 → 战列巡洋舰操作 → 飞船操控学…）
   并按「前置优先」排序，同时显示 ESI 训练队列（需求 `esi-skills.read_skillqueue.v1`，
   缺该授权时只在该面板提示，不影响其余功能）
-- **逐门武器弹药**：高槽每门武器的行内下拉框可显式指定弹药（默认「自动」= 按装填尺寸
-  attr 128 自动配弹）；尺寸不符或该弹药不在装配里时自动回退，不会报错
+- **逐门武器弹药**：高槽每门武器的行内下拉框列出该武器**全部兼容弹药**（引擎按 SDE 计算：
+  装填尺寸 attr 128 一致 + 弹药组属于 `chargeGroup1..5` attr 604-608，排除脚本/电容装料等
+  无伤害「弹药」），按弹药组分组、标注 T1/T2/势力，货舱里已有的标「货舱」；选中即生效，
+  **不必先把弹药放进货舱**（也不占货舱容积）；默认「自动」= 按装填尺寸自动配弹（优先弹药组
+  匹配者），弹药不存在/尺寸或弹药组不符时回退，不会报错
 - **存档**：本地（SQLite）+ 写回 EVE（需 `esi-fittings.write_fittings.v1`，需重新授权）
 - 物品详情：点击任意物品查看属性表/需求技能/舰船特性
 
@@ -71,6 +74,8 @@ nohup python3 webapp.py --port 8090 --host 0.0.0.0 > data/webapp.log 2>&1 &
 - 电容消耗按「全部启用模块」估算（游戏只计当前激活）
 - 速度/质量按所有推进器同时生效计算
 - CPU/PG 按全部装备在线计算（可能显示超配）
+- 导弹/发射架类武器尚未纳入火力模型（`is_weapon` 只认炮台类效果），因此其行内弹药
+  下拉框暂不出现（接口 `/api/weapon/<tid>/charges` 已按弹药组支持，接入时即可用）
 
 ## API
 
@@ -78,6 +83,7 @@ nohup python3 webapp.py --port 8090 --host 0.0.0.0 > data/webapp.log 2>&1 &
 GET  /api/search?q=&cat=        物品搜索（6 舰船 /7 装备 /8 弹药）
 GET  /api/ships  /api/groups    舰船列表（含 group/race）/ 舰船组
 GET  /api/item/<tid>            物品详情（属性/需求技能/特性）
+GET  /api/weapon/<tid>/charges  该武器全部兼容弹药（尺寸 + chargeGroup，不限货舱）
 POST /api/simulate              模拟 {ship_tid, items:[[tid,qty]], skills, charges:{武器tid:弹药tid}}
 POST /api/eft/simulate          EFT 文本模拟
 POST /api/skillplan             技能计划 {cid, ship_tid, items, skills?}
